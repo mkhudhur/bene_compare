@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Name Mismatch Checker", layout="wide")
-st.title("📟 Name Mismatch Checker")
+st.set_page_config(page_title="Apex Accounts", layout="wide")
+st.title("Apex Accounts")
 
 # --- Helper Functions ---
 def normalize_name(name):
