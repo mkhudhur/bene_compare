@@ -1,0 +1,843 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+from typing import List, Dict, Any
+
+st.set_page_config(page_title="Beneficiary Reconciliation Tool", layout="wide")
+st.title("🔍 Beneficiary Reconciliation Tool")
+st.write("Compare BD and AC beneficiary data to identify sync discrepancies")
+
+# --- Data Loading and Preparation ---
+@st.cache_data
+def load_and_prepare_bd(file):
+    """Load and prepare BD beneficiary data"""
+    df = pd.read_csv(file)
+    df.columns = df.columns.str.lower().str.strip()
+    
+    # Normalize names
+    df["first_name_normalized"] = df["first_name"].fillna("").astype(str).str.strip().str.lower()
+    df["last_name_normalized"] = df["last_name"].fillna("").astype(str).str.strip().str.lower()
+    df["full_name_normalized"] = (df["first_name_normalized"] + " " + df["last_name_normalized"]).str.strip()
+    
+    # BD designation mapping (primary/contingent)
+    bd_designation_mapping = {
+        'primary': 'primary',
+        'contingent': 'contingent'
+    }
+    
+    df["designation_normalized"] = (df["designation"]
+        .fillna("").astype(str).str.strip().str.lower()
+        .map(bd_designation_mapping)
+        .fillna("unknown"))
+    
+    # BD designation type mapping (PER CAPITA/PER STIRPES)
+    bd_designation_type_mapping = {
+        'percapita': 'per_capita',
+        'perstirpes': 'per_stirpes',
+        'pc': 'per_capita',
+        'ps': 'per_stirpes'
+    }
+    
+    if "designation_type" in df.columns:
+        # First, let's see what we're working with
+        df["designation_type_original"] = df["designation_type"]  # Keep original for debugging
+        
+        # Normalize: lowercase, remove spaces and underscores
+        df["designation_type_cleaned"] = (df["designation_type"]
+            .fillna("").astype(str).str.strip().str.lower()
+            .str.replace(' ', '').str.replace('_', ''))
+        
+        df["designation_type_normalized"] = df["designation_type_cleaned"].map(bd_designation_type_mapping)
+        
+        # If mapping failed, keep the cleaned original value
+        df["designation_type_normalized"] = df["designation_type_normalized"].fillna(
+            df["designation_type_cleaned"]
+        )
+    else:
+        df["designation_type_normalized"] = "not_provided"
+    
+    # BD Status mapping (keep original status)
+    df["bd_status"] = df["status"].fillna("UNKNOWN").astype(str).str.upper()
+    
+    # Parse sync state if available
+    if "sync_state" in df.columns:
+        df["bd_sync_state"] = df["sync_state"].fillna("UNKNOWN").astype(str).str.upper()
+    else:
+        df["bd_sync_state"] = "UNKNOWN"
+    
+    return df
+
+@st.cache_data
+def load_and_prepare_ac(file):
+    """Load and prepare AC beneficiary data"""
+    df = pd.read_csv(file)
+    df.columns = df.columns.str.lower().str.strip()
+    
+    # Normalize names
+    df["first_name_normalized"] = df["first_name"].fillna("").astype(str).str.strip().str.lower()
+    df["last_name_normalized"] = df["last_name"].fillna("").astype(str).str.strip().str.lower()
+    df["full_name_normalized"] = (df["first_name_normalized"] + " " + df["last_name_normalized"]).str.strip()
+    
+    # AC designation mapping (P=primary, S=contingent/secondary)
+    ac_designation_mapping = {
+        'p': 'primary',
+        's': 'contingent'  # AC uses S for secondary/contingent
+    }
+    
+    df["designation_normalized"] = (df["designation"]
+        .fillna("").astype(str).str.strip().str.lower()
+        .map(ac_designation_mapping)
+        .fillna("unknown"))
+    
+    # AC designation type mapping (PC=per capita, PS=per stirpes)
+    ac_designation_type_mapping = {
+        'pc': 'per_capita',
+        'ps': 'per_stirpes',
+        'percapita': 'per_capita',
+        'perstirpes': 'per_stirpes'
+    }
+    
+    if "designation_type" in df.columns:
+        # First, let's see what we're working with
+        df["designation_type_original"] = df["designation_type"]  # Keep original for debugging
+        
+        # Normalize: lowercase, remove spaces and underscores
+        df["designation_type_cleaned"] = (df["designation_type"]
+            .fillna("").astype(str).str.strip().str.lower()
+            .str.replace(' ', '').str.replace('_', ''))
+        
+        df["designation_type_normalized"] = df["designation_type_cleaned"].map(ac_designation_type_mapping)
+        
+        # If mapping failed, keep the cleaned original value
+        df["designation_type_normalized"] = df["designation_type_normalized"].fillna(
+            df["designation_type_cleaned"]
+        )
+    else:
+        df["designation_type_normalized"] = "not_provided"
+    
+    # AC Status based on deleted flag
+    def get_ac_bene_status(deleted_val):
+        if pd.isna(deleted_val):
+            return "ACTIVE"
+        val_str = str(deleted_val).strip().lower()
+        if val_str in ["true", "t", "1", "yes", "y"]:
+            return "DELETED"
+        else:
+            return "ACTIVE"
+    
+    df["ac_bene_status"] = df["deleted"].apply(get_ac_bene_status)
+    
+    # AC Account Status based on closed/restricted flags
+    def get_ac_account_status(row):
+        closed = str(row.get("closed", "")).strip().lower() in ["true", "t", "1", "yes", "y"]
+        restricted = str(row.get("restricted", "")).strip().lower() in ["true", "t", "1", "yes", "y"]
+        if closed:
+            return "CLOSED"
+        elif restricted:
+            return "RESTRICTED"
+        else:
+            return "ACTIVE"
+    
+    df["ac_account_status"] = df.apply(get_ac_account_status, axis=1)
+    
+    # Parse sync state if available
+    if "sync_state" in df.columns:
+        df["ac_sync_state"] = df["sync_state"].fillna("UNKNOWN").astype(str).str.upper()
+    else:
+        df["ac_sync_state"] = "UNKNOWN"
+    
+    return df
+
+def analyze_accounts_batch(accounts_batch, bd_data, ac_data):
+    """Analyze a batch of accounts for better performance"""
+    batch_results = []
+    
+    for account_number in accounts_batch:
+        result = analyze_account(account_number, bd_data, ac_data)
+        batch_results.append(result)
+    
+    return batch_results
+
+def process_all_accounts(all_accounts, bd_data, ac_data, batch_size=1000):
+    """Process all accounts in batches with progress tracking"""
+    total_accounts = len(all_accounts)
+    all_results = []
+    
+    # Create progress tracking
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Process in batches
+    for i in range(0, total_accounts, batch_size):
+        batch = all_accounts[i:i + batch_size]
+        current_batch_size = len(batch)
+        
+        # Update progress
+        progress = (i + current_batch_size) / total_accounts
+        progress_bar.progress(progress)
+        
+        batch_num = (i // batch_size) + 1
+        total_batches = (total_accounts + batch_size - 1) // batch_size
+        status_text.text(f"Processing batch {batch_num}/{total_batches}: "
+                        f"Accounts {i+1}-{min(i+current_batch_size, total_accounts)} of {total_accounts:,}")
+        
+        # Process this batch
+        batch_results = analyze_accounts_batch(batch, bd_data, ac_data)
+        all_results.extend(batch_results)
+        
+        # Small delay to keep UI responsive
+        if batch_num % 10 == 0:  # Every 10 batches
+            import time
+            time.sleep(0.01)
+    
+    # Clean up progress indicators
+    progress_bar.empty()
+    status_text.empty()
+    
+    return all_results
+
+def analyze_account(account_number, bd_data, ac_data):
+    """Analyze discrepancies for a single account"""
+    
+    # Get beneficiaries for this account
+    bd_benes = bd_data[bd_data["account_number"] == account_number] if "account_number" in bd_data.columns else pd.DataFrame()
+    ac_benes = ac_data[ac_data["account_number"] == account_number] if "account_number" in ac_data.columns else pd.DataFrame()
+    
+    # Debug: Check if required columns exist (but don't stop processing)
+    for df_name, df in [("BD", bd_benes), ("AC", ac_benes)]:
+        missing_cols = [col for col in ["designation_normalized", "full_name_normalized"] if col not in df.columns]
+        if missing_cols and not df.empty:
+            st.warning(f"Missing columns in {df_name} data for account {account_number}: {missing_cols}")
+    
+    # Account-level status (simplified)
+    bd_account_status = "NOT_FOUND"
+    if not bd_benes.empty and "bd_status" in bd_benes.columns:
+        bd_account_status = bd_benes["bd_status"].iloc[0]
+    
+    ac_account_status = "NOT_FOUND" 
+    if not ac_benes.empty and "ac_account_status" in ac_benes.columns:
+        ac_account_status = ac_benes["ac_account_status"].iloc[0]
+    
+    # Sync states (simplified)
+    bd_sync_state = "NOT_FOUND"
+    if not bd_benes.empty and "bd_sync_state" in bd_benes.columns:
+        bd_sync_state = bd_benes["bd_sync_state"].iloc[0]
+        
+    ac_sync_state = "NOT_FOUND"
+    if not ac_benes.empty and "ac_sync_state" in ac_benes.columns:
+        ac_sync_state = ac_benes["ac_sync_state"].iloc[0]
+    
+    # Get BD beneficiaries (ALL except inactive) and AC active beneficiaries
+    bd_active_benes = pd.DataFrame()
+    if not bd_benes.empty and "bd_status" in bd_benes.columns:
+        # Show ALL BD beneficiaries EXCEPT inactive (draft, active, closed, pending, etc.)
+        bd_active_benes = bd_benes[bd_benes["bd_status"] != "INACTIVE"]
+    
+    ac_active_benes = pd.DataFrame()
+    if not ac_benes.empty and "ac_bene_status" in ac_benes.columns:
+        # AC: Only show active beneficiaries (not deleted)
+        ac_active_benes = ac_benes[ac_benes["ac_bene_status"] == "ACTIVE"]
+    
+    # Primary and contingent beneficiaries (simplified filtering)
+    bd_primary = pd.DataFrame()
+    bd_contingent = pd.DataFrame()
+    ac_primary = pd.DataFrame()
+    ac_contingent = pd.DataFrame()
+    
+    if not bd_active_benes.empty and "designation_normalized" in bd_active_benes.columns:
+        bd_primary = bd_active_benes[bd_active_benes["designation_normalized"] == "primary"]
+        bd_contingent = bd_active_benes[bd_active_benes["designation_normalized"] == "contingent"]
+        
+    if not ac_active_benes.empty and "designation_normalized" in ac_active_benes.columns:
+        ac_primary = ac_active_benes[ac_active_benes["designation_normalized"] == "primary"]
+        ac_contingent = ac_active_benes[ac_active_benes["designation_normalized"] == "contingent"]
+    
+    # Compare names
+    bd_primary_names = set(bd_primary["full_name_normalized"].dropna()) if "full_name_normalized" in bd_primary.columns else set()
+    ac_primary_names = set(ac_primary["full_name_normalized"].dropna()) if "full_name_normalized" in ac_primary.columns else set()
+    bd_contingent_names = set(bd_contingent["full_name_normalized"].dropna()) if "full_name_normalized" in bd_contingent.columns else set()
+    ac_contingent_names = set(ac_contingent["full_name_normalized"].dropna()) if "full_name_normalized" in ac_contingent.columns else set()
+    
+    # Compare allocations
+    bd_primary_allocation = bd_primary["percentage"].sum() if not bd_primary.empty and "percentage" in bd_primary.columns else 0
+    ac_primary_allocation = ac_primary["percentage"].sum() if not ac_primary.empty and "percentage" in ac_primary.columns else 0
+    bd_contingent_allocation = bd_contingent["percentage"].sum() if not bd_contingent.empty and "percentage" in bd_contingent.columns else 0
+    ac_contingent_allocation = ac_contingent["percentage"].sum() if not ac_contingent.empty and "percentage" in ac_contingent.columns else 0
+    
+    # Compare designation types
+    bd_primary_types = set(bd_primary["designation_type_normalized"].dropna()) if not bd_primary.empty and "designation_type_normalized" in bd_primary.columns else set()
+    ac_primary_types = set(ac_primary["designation_type_normalized"].dropna()) if not ac_primary.empty and "designation_type_normalized" in ac_primary.columns else set()
+    bd_contingent_types = set(bd_contingent["designation_type_normalized"].dropna()) if not bd_contingent.empty and "designation_type_normalized" in bd_contingent.columns else set()
+    ac_contingent_types = set(ac_contingent["designation_type_normalized"].dropna()) if not ac_contingent.empty and "designation_type_normalized" in ac_contingent.columns else set()
+    
+    # Handle NaN
+    bd_primary_allocation = 0 if pd.isna(bd_primary_allocation) else bd_primary_allocation
+    ac_primary_allocation = 0 if pd.isna(ac_primary_allocation) else ac_primary_allocation
+    bd_contingent_allocation = 0 if pd.isna(bd_contingent_allocation) else bd_contingent_allocation
+    ac_contingent_allocation = 0 if pd.isna(ac_contingent_allocation) else ac_contingent_allocation
+    
+    # Create beneficiary summary strings with status indicators
+    def create_bene_summary(benes_df):
+        if benes_df.empty:
+            return "None"
+        summary = []
+        for _, row in benes_df.iterrows():
+            name = row.get("full_name_normalized", "Unknown")
+            designation = row.get("designation_normalized", "unknown")
+            designation_type = row.get("designation_type_normalized", "unknown")
+            percentage = row.get("percentage", 0)
+            status = row.get("bd_status", row.get("ac_bene_status", "unknown"))
+            
+            # Include status for BD beneficiaries to show draft, pending, etc.
+            if "bd_status" in row:
+                summary.append(f"{designation.title()}: {name.title()} ({percentage}%, {designation_type}, {status})")
+            else:
+                summary.append(f"{designation.title()}: {name.title()} ({percentage}%, {designation_type})")
+        return " | ".join(summary)
+    
+    def create_deleted_bene_summary(benes_df):
+        if benes_df.empty:
+            return "None"
+        summary = []
+        for _, row in benes_df.iterrows():
+            name = row.get("full_name_normalized", "Unknown")
+            designation = row.get("designation_normalized", "unknown")
+            percentage = row.get("percentage", 0)
+            summary.append(f"{designation.title()}: {name.title()} ({percentage}%)")
+        return " | ".join(summary)
+    
+    # Active beneficiaries summary
+    bd_summary = create_bene_summary(bd_active_benes)
+    ac_summary = create_bene_summary(ac_active_benes)
+    
+    # Get deleted/inactive beneficiaries
+    bd_deleted_benes = pd.DataFrame()
+    if not bd_benes.empty and "bd_status" in bd_benes.columns:
+        bd_deleted_benes = bd_benes[bd_benes["bd_status"] == "INACTIVE"]
+    
+    ac_deleted_benes = pd.DataFrame()
+    if not ac_benes.empty and "ac_bene_status" in ac_benes.columns:
+        ac_deleted_benes = ac_benes[ac_benes["ac_bene_status"] == "DELETED"]
+    
+    # Deleted beneficiaries summary
+    bd_deleted_summary = create_deleted_bene_summary(bd_deleted_benes)
+    ac_deleted_summary = create_deleted_bene_summary(ac_deleted_benes)
+    
+    # Identify discrepancies
+    discrepancies = []
+    
+    # Account status mismatch
+    if bd_account_status != ac_account_status:
+        discrepancies.append("Account Status Mismatch")
+    
+    # Sync state issues
+    if bd_sync_state in ["PENDING", "FAILED"] or ac_sync_state in ["PENDING", "FAILED"]:
+        discrepancies.append("Sync State Issue")
+    
+    # Primary beneficiary name mismatch
+    if bd_primary_names != ac_primary_names:
+        discrepancies.append("Primary Names Mismatch")
+    
+    # Contingent beneficiary name mismatch
+    if bd_contingent_names != ac_contingent_names:
+        discrepancies.append("Contingent Names Mismatch")
+    
+    # Primary allocation mismatch
+    if round(bd_primary_allocation, 2) != round(ac_primary_allocation, 2):
+        discrepancies.append("Primary Allocation Mismatch")
+    
+    # Contingent allocation mismatch
+    if round(bd_contingent_allocation, 2) != round(ac_contingent_allocation, 2):
+        discrepancies.append("Contingent Allocation Mismatch")
+    
+    # Designation type mismatches
+    if bd_primary_types != ac_primary_types:
+        discrepancies.append("Primary Designation Type Mismatch")
+    
+    if bd_contingent_types != ac_contingent_types:
+        discrepancies.append("Contingent Designation Type Mismatch")
+    
+    # Allocation validation (should be 100% when beneficiaries exist)
+    if not bd_primary.empty and round(bd_primary_allocation, 2) != 100.0:
+        discrepancies.append("BD Primary ≠ 100%")
+    if not ac_primary.empty and round(ac_primary_allocation, 2) != 100.0:
+        discrepancies.append("AC Primary ≠ 100%")
+    if not bd_contingent.empty and round(bd_contingent_allocation, 2) != 100.0:
+        discrepancies.append("BD Contingent ≠ 100%")
+    if not ac_contingent.empty and round(ac_contingent_allocation, 2) != 100.0:
+        discrepancies.append("AC Contingent ≠ 100%")
+    
+    return {
+        "account_number": account_number,
+        "bd_account_status": bd_account_status,
+        "ac_account_status": ac_account_status,
+        "bd_sync_state": bd_sync_state,
+        "ac_sync_state": ac_sync_state,
+        "bd_beneficiaries": bd_summary,
+        "ac_beneficiaries": ac_summary,
+        "bd_deleted_benes": bd_deleted_summary,
+        "ac_deleted_benes": ac_deleted_summary,
+        "bd_primary_allocation": f"{bd_primary_allocation}%" if bd_primary_allocation > 0 else "N/A",
+        "ac_primary_allocation": f"{ac_primary_allocation}%" if ac_primary_allocation > 0 else "N/A",
+        "bd_contingent_allocation": f"{bd_contingent_allocation}%" if bd_contingent_allocation > 0 else "N/A",
+        "ac_contingent_allocation": f"{ac_contingent_allocation}%" if ac_contingent_allocation > 0 else "N/A",
+        "discrepancies": " | ".join(discrepancies) if discrepancies else "No Issues",
+        "discrepancy_count": len(discrepancies),
+        "has_issues": len(discrepancies) > 0
+    }
+
+# --- Batch Processing Configuration ---
+st.sidebar.header("⚙️ Performance Settings")
+batch_size = st.sidebar.slider(
+    "Batch Size", 
+    min_value=100, 
+    max_value=10000, 
+    value=2000, 
+    step=500,
+    help="Number of accounts to process per batch. Larger = faster but more memory usage."
+)
+
+enable_batch_processing = st.sidebar.checkbox(
+    "Enable Batch Processing", 
+    value=True,
+    help="Process accounts in batches for better performance with large datasets"
+)
+
+# Memory optimization option
+optimize_memory = st.sidebar.checkbox(
+    "Memory Optimization",
+    value=True,
+    help="Use memory-efficient processing for very large datasets"
+)
+
+# --- File Upload ---
+st.subheader("📁 Upload Files")
+col1, col2 = st.columns(2)
+
+with col1:
+    bd_file = st.file_uploader("Upload BD Beneficiary File (CSV)", type="csv", key="bd")
+    
+with col2:
+    ac_file = st.file_uploader("Upload AC Beneficiary File (CSV)", type="csv", key="ac")
+
+if bd_file and ac_file:
+    # Load data
+    with st.spinner("Loading and preparing data..."):
+        bd_data = load_and_prepare_bd(bd_file)
+        ac_data = load_and_prepare_ac(ac_file)
+    
+    # Debug: Check if normalization worked
+    st.write("BD Columns:", list(bd_data.columns))
+    st.write("AC Columns:", list(ac_data.columns))
+    
+    # Verify key columns exist
+    if "designation_normalized" not in bd_data.columns:
+        st.error("❌ BD data missing 'designation_normalized' column")
+        st.write("Available BD columns:", list(bd_data.columns))
+        st.stop()
+        
+    if "designation_normalized" not in ac_data.columns:
+        st.error("❌ AC data missing 'designation_normalized' column")
+        st.write("Available AC columns:", list(ac_data.columns))
+        st.stop()
+    
+    # Show sample of normalized data
+    if len(bd_data) > 0:
+        st.write("**BD Sample (first 5 rows):**")
+        if "designation_type" in bd_data.columns:
+            sample_bd = bd_data[["designation", "designation_normalized", "designation_type", "designation_type_normalized"]].head(5)
+        else:
+            sample_bd = bd_data[["designation", "designation_normalized"]].head(5)
+            st.warning("No 'designation_type' column found in BD data")
+        st.dataframe(sample_bd)
+        
+        # Show unique designation types in BD data
+        if "designation_type" in bd_data.columns:
+            unique_bd_types = bd_data["designation_type"].value_counts()
+            st.write("**Unique BD Designation Types:**")
+            st.dataframe(unique_bd_types)
+    
+    if len(ac_data) > 0:
+        st.write("**AC Sample (first 5 rows):**")
+        if "designation_type" in ac_data.columns:
+            sample_ac = ac_data[["designation", "designation_normalized", "designation_type", "designation_type_normalized"]].head(5)
+        else:
+            sample_ac = ac_data[["designation", "designation_normalized"]].head(5)
+            st.warning("No 'designation_type' column found in AC data")
+        st.dataframe(sample_ac)
+        
+        # Show unique designation types in AC data
+        if "designation_type" in ac_data.columns:
+            unique_ac_types = ac_data["designation_type"].value_counts()
+            st.write("**Unique AC Designation Types:**")
+            st.dataframe(unique_ac_types)
+    
+    # Show data overview
+    st.subheader("📊 Data Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("BD Records", f"{len(bd_data):,}")
+    with col2:
+        st.metric("AC Records", f"{len(ac_data):,}")
+    with col3:
+        bd_accounts = bd_data["account_number"].nunique() if "account_number" in bd_data.columns else 0
+        st.metric("BD Accounts", f"{bd_accounts:,}")
+    with col4:
+        ac_accounts = ac_data["account_number"].nunique() if "account_number" in ac_data.columns else 0
+        st.metric("AC Accounts", f"{ac_accounts:,}")
+    
+    # Show status distributions
+    st.subheader("📈 Status Distributions")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**BD Status Distribution:**")
+        bd_status_dist = bd_data["bd_status"].value_counts()
+        st.bar_chart(bd_status_dist)
+    
+    with col2:
+        st.write("**AC Beneficiary Status:**")
+        ac_bene_status_dist = ac_data["ac_bene_status"].value_counts()
+        st.bar_chart(ac_bene_status_dist)
+        
+    with col3:
+        st.write("**AC Account Status:**")
+        ac_account_status_dist = ac_data["ac_account_status"].value_counts()
+        st.bar_chart(ac_account_status_dist)
+    
+    # Get all unique accounts
+    bd_accounts_set = set(bd_data["account_number"].dropna()) if "account_number" in bd_data.columns else set()
+    ac_accounts_set = set(ac_data["account_number"].dropna()) if "account_number" in ac_data.columns else set()
+    all_accounts = list(bd_accounts_set | ac_accounts_set)
+    
+    # Filter out 3AA accounts if needed
+    all_accounts = [acc for acc in all_accounts if not str(acc).startswith("3AA")]
+    
+    # Memory optimization for large datasets
+    if optimize_memory and len(all_accounts) > 10000:
+        st.info(f"🧠 Memory optimization enabled for {len(all_accounts):,} accounts")
+        
+        # Process only essential columns to reduce memory usage
+        essential_bd_cols = ['account_number', 'first_name_normalized', 'last_name_normalized', 
+                           'full_name_normalized', 'designation_normalized', 'designation_type_normalized',
+                           'percentage', 'bd_status', 'bd_sync_state']
+        essential_ac_cols = ['account_number', 'first_name_normalized', 'last_name_normalized',
+                           'full_name_normalized', 'designation_normalized', 'designation_type_normalized',
+                           'percentage', 'ac_bene_status', 'ac_account_status', 'ac_sync_state']
+        
+        # Keep only essential columns
+        bd_data_optimized = bd_data[[col for col in essential_bd_cols if col in bd_data.columns]].copy()
+        ac_data_optimized = ac_data[[col for col in essential_ac_cols if col in ac_data.columns]].copy()
+        
+        # Use optimized data for processing
+        processing_bd_data = bd_data_optimized
+        processing_ac_data = ac_data_optimized
+    else:
+        processing_bd_data = bd_data
+        processing_ac_data = ac_data
+    
+    # Analyze all accounts with batch processing
+    st.subheader("🔍 Analyzing Accounts...")
+    
+    if enable_batch_processing and len(all_accounts) > 500:
+        st.info(f"📦 Using batch processing with batch size: {batch_size:,}")
+        results = process_all_accounts(all_accounts, processing_bd_data, processing_ac_data, batch_size)
+    else:
+        st.info("🔄 Using standard processing mode")
+        progress_bar = st.progress(0)
+        results = []
+        
+        for i, account in enumerate(all_accounts):
+            result = analyze_account(account, processing_bd_data, processing_ac_data)
+            results.append(result)
+            
+            # Update progress
+            progress = (i + 1) / len(all_accounts)
+            progress_bar.progress(progress)
+        
+        progress_bar.empty()
+    
+    # Convert to DataFrame
+    results_df = pd.DataFrame(results)
+    
+    # Filter options
+    st.subheader("🎛️ Filter Options")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        show_only_issues = st.checkbox("Show Only Accounts with Issues", value=True)
+    
+    with col2:
+        bd_status_filter = st.multiselect(
+            "BD Status Filter",
+            options=results_df["bd_account_status"].unique(),
+            default=results_df["bd_account_status"].unique()
+        )
+    
+    with col3:
+        sync_state_filter = st.multiselect(
+            "Sync State Filter",
+            options=list(set(results_df["bd_sync_state"].unique()) | set(results_df["ac_sync_state"].unique())),
+            default=list(set(results_df["bd_sync_state"].unique()) | set(results_df["ac_sync_state"].unique()))
+        )
+        
+    with col4:
+        min_discrepancies = st.number_input("Min Discrepancies", min_value=0, value=0)
+    
+    # Apply filters
+    filtered_df = results_df.copy()
+    
+    if show_only_issues:
+        filtered_df = filtered_df[filtered_df["has_issues"] == True]
+    
+    if bd_status_filter:
+        filtered_df = filtered_df[filtered_df["bd_account_status"].isin(bd_status_filter)]
+    
+    if sync_state_filter:
+        filtered_df = filtered_df[
+            (filtered_df["bd_sync_state"].isin(sync_state_filter)) |
+            (filtered_df["ac_sync_state"].isin(sync_state_filter))
+        ]
+    
+    if min_discrepancies > 0:
+        filtered_df = filtered_df[filtered_df["discrepancy_count"] >= min_discrepancies]
+    
+    # Results summary
+    st.subheader("📋 Results Summary")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Accounts", f"{len(results_df):,}")
+    with col2:
+        accounts_with_issues = len(results_df[results_df["has_issues"] == True])
+        st.metric("Accounts with Issues", f"{accounts_with_issues:,}")
+    with col3:
+        st.metric("Filtered Results", f"{len(filtered_df):,}")
+    with col4:
+        avg_discrepancies = results_df["discrepancy_count"].mean()
+        st.metric("Avg Discrepancies", f"{avg_discrepancies:.1f}")
+    
+    # Display results
+    st.subheader("🔍 Detailed Results")
+    
+    if filtered_df.empty:
+        st.info("✅ No accounts match the current filters.")
+    else:
+        # Sort by discrepancy count (highest first)
+        display_df = filtered_df.sort_values("discrepancy_count", ascending=False)
+        
+        st.dataframe(
+            display_df[[
+                "account_number",
+                "bd_account_status",
+                "ac_account_status", 
+                "bd_sync_state",
+                "ac_sync_state",
+                "bd_primary_allocation",
+                "ac_primary_allocation",
+                "bd_contingent_allocation",
+                "ac_contingent_allocation",
+                "bd_beneficiaries",
+                "ac_beneficiaries",
+                "bd_deleted_benes",
+                "ac_deleted_benes",
+                "discrepancies",
+                "discrepancy_count"
+            ]],
+            use_container_width=True
+        )
+        
+        # Download button for main results
+        st.download_button(
+            label="📥 Download All Results",
+            data=display_df.to_csv(index=False),
+            file_name="beneficiary_reconciliation_all_results.csv",
+            mime="text/csv"
+        )
+        
+        # Breakdown Analysis for Database Fixes
+        st.subheader("🔧 Database Fix Categories")
+        st.write("Download specific issue categories for targeted database fixes:")
+        
+        # Create filter helper function
+        def create_download_section(title, description, filter_condition, filename_suffix):
+            filtered_data = results_df[filter_condition]
+            count = len(filtered_data)
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"**{title}** - {description}")
+                st.write(f"📊 {count:,} accounts found")
+            
+            with col2:
+                if count > 0:
+                    st.download_button(
+                        label=f"⬇️ Download ({count:,})",
+                        data=filtered_data.to_csv(index=False),
+                        file_name=f"beneficiary_fix_{filename_suffix}.csv",
+                        mime="text/csv",
+                        key=f"download_{filename_suffix}"
+                    )
+                else:
+                    st.info("No data")
+            
+            # Show preview if data exists
+            if count > 0:
+                with st.expander(f"Preview {title} (first 5 rows)"):
+                    preview_cols = ["account_number", "bd_beneficiaries", "ac_beneficiaries", 
+                                   "bd_sync_state", "ac_sync_state", "discrepancies"]
+                    available_cols = [col for col in preview_cols if col in filtered_data.columns]
+                    st.dataframe(filtered_data[available_cols].head(5))
+            
+            st.write("---")
+        
+        # 1. Benes exist in BD, but not AC
+        bd_only_condition = (
+            (results_df["bd_beneficiaries"] != "None") & 
+            (results_df["ac_beneficiaries"] == "None")
+        )
+        create_download_section(
+            "BD Only Beneficiaries",
+            "Beneficiaries exist in BD but missing in AC",
+            bd_only_condition,
+            "bd_only"
+        )
+        
+        # 2. Benes exist in AC, but not BD
+        ac_only_condition = (
+            (results_df["ac_beneficiaries"] != "None") & 
+            (results_df["bd_beneficiaries"] == "None")
+        )
+        create_download_section(
+            "AC Only Beneficiaries", 
+            "Beneficiaries exist in AC but missing in BD",
+            ac_only_condition,
+            "ac_only"
+        )
+        
+        # 3. Benes that have a mismatch (both exist but different)
+        mismatch_condition = (
+            (results_df["bd_beneficiaries"] != "None") & 
+            (results_df["ac_beneficiaries"] != "None") &
+            (results_df["has_issues"] == True)
+        )
+        create_download_section(
+            "Beneficiary Mismatches",
+            "Beneficiaries exist in both systems but have discrepancies",
+            mismatch_condition,
+            "mismatches"
+        )
+        
+        # 4. Benes with pending sync status in BD
+        bd_pending_condition = results_df["bd_sync_state"] == "PENDING"
+        create_download_section(
+            "BD Pending Sync State",
+            "Beneficiaries with pending sync state in BD",
+            bd_pending_condition,
+            "bd_pending"
+        )
+        
+        # 5. Benes with failed BD sync state
+        bd_failed_condition = results_df["bd_sync_state"] == "FAILED"
+        create_download_section(
+            "BD Failed Sync State",
+            "Beneficiaries with failed sync state in BD", 
+            bd_failed_condition,
+            "bd_failed"
+        )
+        
+        # 6. Benes with draft BD sync state
+        bd_draft_condition = results_df["bd_sync_state"] == "DRAFT"
+        create_download_section(
+            "BD Draft Sync State",
+            "Beneficiaries with draft sync state in BD",
+            bd_draft_condition,
+            "bd_draft"
+        )
+        
+        # 7. AC Pending Sync State (bonus - you mentioned this too)
+        ac_pending_condition = results_df["ac_sync_state"] == "PENDING"
+        create_download_section(
+            "AC Pending Sync State",
+            "Beneficiaries with pending sync state in AC",
+            ac_pending_condition,
+            "ac_pending"
+        )
+        
+        # Summary table of all categories
+        st.subheader("📈 Fix Categories Summary")
+        summary_data = {
+            "Category": [
+                "BD Only Beneficiaries",
+                "AC Only Beneficiaries", 
+                "Beneficiary Mismatches",
+                "BD Pending Sync",
+                "BD Failed Sync",
+                "BD Draft Sync",
+                "AC Pending Sync"
+            ],
+            "Count": [
+                len(results_df[bd_only_condition]),
+                len(results_df[ac_only_condition]),
+                len(results_df[mismatch_condition]),
+                len(results_df[bd_pending_condition]),
+                len(results_df[bd_failed_condition]),
+                len(results_df[bd_draft_condition]),
+                len(results_df[ac_pending_condition])
+            ],
+            "Priority": [
+                "High - Missing data sync",
+                "High - Missing data sync", 
+                "Medium - Data inconsistency",
+                "High - Stuck workflow",
+                "Critical - Failed sync",
+                "Low - Draft state",
+                "High - Stuck workflow"
+            ]
+        }
+        
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, use_container_width=True)
+        
+        # Download summary
+        st.download_button(
+            label="📊 Download Fix Summary",
+            data=summary_df.to_csv(index=False),
+            file_name="beneficiary_fix_summary.csv",
+            mime="text/csv",
+            key="download_summary"
+        )
+        
+        # Performance metrics in sidebar
+        st.sidebar.subheader("📈 Performance Metrics")
+        st.sidebar.metric("Total Accounts Processed", f"{len(all_accounts):,}")
+        st.sidebar.metric("Accounts with Issues", f"{accounts_with_issues:,}")
+        if enable_batch_processing and len(all_accounts) > 500:
+            st.sidebar.metric("Batch Size Used", f"{batch_size:,}")
+            total_batches = (len(all_accounts) + batch_size - 1) // batch_size
+            st.sidebar.metric("Total Batches", f"{total_batches:,}")
+        
+        if optimize_memory and len(all_accounts) > 10000:
+            st.sidebar.success("🧠 Memory optimization was used")
+    
+    # Common discrepancy analysis
+    if not results_df.empty and len(results_df[results_df["has_issues"] == True]) > 0:
+        st.subheader("📊 Common Discrepancy Analysis")
+        
+        # Flatten discrepancies for analysis
+        all_discrepancies = []
+        for discrepancies in results_df["discrepancies"]:
+            if discrepancies != "No Issues":
+                all_discrepancies.extend(discrepancies.split(" | "))
+        
+        if all_discrepancies:
+            discrepancy_counts = pd.Series(all_discrepancies).value_counts()
+            st.bar_chart(discrepancy_counts)
+            
+            st.write("**Top Issues to Address:**")
+            for i, (issue, count) in enumerate(discrepancy_counts.head(5).items(), 1):
+                st.write(f"{i}. **{issue}**: {count} accounts ({count/len(results_df)*100:.1f}%)")
+
+else:
+    st.info("👆 Please upload both BD and AC CSV files to begin the analysis.")
