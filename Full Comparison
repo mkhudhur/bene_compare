@@ -14,10 +14,22 @@ def load_and_prepare_bd(file):
     df = pd.read_csv(file)
     df.columns = df.columns.str.lower().str.strip()
     
-    # Normalize names
+    # Normalize names - handle both individual and entity relationships
+    def get_full_name_bd(row):
+        # Check if this is an entity relationship
+        relationship = str(row.get("relationship", "")).strip().lower()
+        if relationship == "entity":
+            # For entities, use entity_name
+            return str(row.get("entity_name", "")).strip().lower()
+        else:
+            # For individuals, combine first_name + last_name
+            first_name = str(row.get("first_name", "")).strip().lower()
+            last_name = str(row.get("last_name", "")).strip().lower()
+            return (first_name + " " + last_name).strip()
+    
     df["first_name_normalized"] = df["first_name"].fillna("").astype(str).str.strip().str.lower()
     df["last_name_normalized"] = df["last_name"].fillna("").astype(str).str.strip().str.lower()
-    df["full_name_normalized"] = (df["first_name_normalized"] + " " + df["last_name_normalized"]).str.strip()
+    df["full_name_normalized"] = df.apply(get_full_name_bd, axis=1)
     
     # BD designation mapping (primary/contingent)
     bd_designation_mapping = {
@@ -73,10 +85,31 @@ def load_and_prepare_ac(file):
     df = pd.read_csv(file)
     df.columns = df.columns.str.lower().str.strip()
     
-    # Normalize names
+    # Normalize names - handle both individual and entity relationships  
+    def get_full_name_ac(row):
+        # Check if this is an entity relationship
+        relationship = str(row.get("relationship", "")).strip().lower()
+        first_name = str(row.get("first_name", "")).strip()
+        last_name = str(row.get("last_name", "")).strip()
+        entity_name_field = str(row.get("entity_name", "")).strip()
+        
+        if relationship == "entity":
+            # For entities, try multiple possible name columns for AC
+            entity_name = (row.get("entity_name", "") or 
+                          row.get("name", "") or 
+                          row.get("beneficiary_name", "") or
+                          row.get("bene_name", ""))
+            return str(entity_name).strip().lower()
+        elif relationship in ["spouse", "non-spouse"] and (not first_name or not last_name) and entity_name_field:
+            # For spouse/non-spouse relationships where first/last names are missing but entity_name field exists
+            return entity_name_field.lower()
+        else:
+            # For individuals, combine first_name + last_name
+            return (first_name + " " + last_name).strip().lower()
+    
     df["first_name_normalized"] = df["first_name"].fillna("").astype(str).str.strip().str.lower()
     df["last_name_normalized"] = df["last_name"].fillna("").astype(str).str.strip().str.lower()
-    df["full_name_normalized"] = (df["first_name_normalized"] + " " + df["last_name_normalized"]).str.strip()
+    df["full_name_normalized"] = df.apply(get_full_name_ac, axis=1)
     
     # AC designation mapping (P=primary, S=contingent/secondary)
     ac_designation_mapping = {
@@ -287,12 +320,19 @@ def analyze_account(account_number, bd_data, ac_data):
             designation_type = row.get("designation_type_normalized", "unknown")
             percentage = row.get("percentage", 0)
             status = row.get("bd_status", row.get("ac_bene_status", "unknown"))
+            relationship = row.get("relationship", "individual")
+            
+            # Display the name properly based on relationship type
+            if relationship.lower() == "entity":
+                display_name = f"[Entity] {name.title()}"
+            else:
+                display_name = name.title()
             
             # Include status for BD beneficiaries to show draft, pending, etc.
             if "bd_status" in row:
-                summary.append(f"{designation.title()}: {name.title()} ({percentage}%, {designation_type}, {status})")
+                summary.append(f"{designation.title()}: {display_name} ({percentage}%, {designation_type}, {status})")
             else:
-                summary.append(f"{designation.title()}: {name.title()} ({percentage}%, {designation_type})")
+                summary.append(f"{designation.title()}: {display_name} ({percentage}%, {designation_type})")
         return " | ".join(summary)
     
     def create_deleted_bene_summary(benes_df):
@@ -303,7 +343,15 @@ def analyze_account(account_number, bd_data, ac_data):
             name = row.get("full_name_normalized", "Unknown")
             designation = row.get("designation_normalized", "unknown")
             percentage = row.get("percentage", 0)
-            summary.append(f"{designation.title()}: {name.title()} ({percentage}%)")
+            relationship = row.get("relationship", "individual")
+            
+            # Display the name properly based on relationship type
+            if relationship.lower() == "entity":
+                display_name = f"[Entity] {name.title()}"
+            else:
+                display_name = name.title()
+                
+            summary.append(f"{designation.title()}: {display_name} ({percentage}%)")
         return " | ".join(summary)
     
     # Active beneficiaries summary
@@ -322,6 +370,61 @@ def analyze_account(account_number, bd_data, ac_data):
     # Deleted beneficiaries summary
     bd_deleted_summary = create_deleted_bene_summary(bd_deleted_benes)
     ac_deleted_summary = create_deleted_bene_summary(ac_deleted_benes)
+    
+    # Last updated analysis - determine which system was updated most recently
+    bd_updated = None
+    ac_updated = None
+    bd_updated_by = "Unknown"
+    ac_updated_by = "Unknown"
+    
+    # Get BD update info
+    if not bd_benes.empty and "updated" in bd_benes.columns:
+        bd_updated_series = pd.to_datetime(bd_benes["updated"], errors="coerce")
+        if not bd_updated_series.isna().all():
+            bd_updated = bd_updated_series.max()
+            # Get updated_by from the most recent BD record
+            most_recent_bd = bd_benes[bd_updated_series == bd_updated]
+            if not most_recent_bd.empty and "updated_by" in most_recent_bd.columns:
+                bd_updated_by = str(most_recent_bd["updated_by"].iloc[0]) if pd.notna(most_recent_bd["updated_by"].iloc[0]) else "Unknown"
+    
+    # Get AC update info  
+    if not ac_benes.empty and "updated" in ac_benes.columns:
+        ac_updated_series = pd.to_datetime(ac_benes["updated"], errors="coerce")
+        if not ac_updated_series.isna().all():
+            ac_updated = ac_updated_series.max()
+            # Get updated_by from the most recent AC record
+            most_recent_ac = ac_benes[ac_updated_series == ac_updated]
+            if not most_recent_ac.empty and "updated_by" in most_recent_ac.columns:
+                ac_updated_by = str(most_recent_ac["updated_by"].iloc[0]) if pd.notna(most_recent_ac["updated_by"].iloc[0]) else "Unknown"
+    
+    # Determine which system was updated last (simple string comparison)
+    last_updated_system = "Unknown"
+    last_updated_date = "Unknown"
+    last_updated_by = "Unknown"
+    
+    if bd_updated is not None and ac_updated is not None:
+        # Convert both to strings for simple comparison
+        bd_str = str(bd_updated)
+        ac_str = str(ac_updated)
+        if bd_str >= ac_str:
+            last_updated_system = "BD"
+            last_updated_date = bd_str
+            last_updated_by = bd_updated_by
+        else:
+            last_updated_system = "AC"
+            last_updated_date = ac_str
+            last_updated_by = ac_updated_by
+    elif bd_updated is not None:
+        last_updated_system = "BD"
+        last_updated_date = str(bd_updated)
+        last_updated_by = bd_updated_by
+    elif ac_updated is not None:
+        last_updated_system = "AC"
+        last_updated_date = str(ac_updated)
+        last_updated_by = ac_updated_by
+    
+    # Create combined last updated field
+    last_updated_info = f"{last_updated_system} {last_updated_date}" if last_updated_date != "Unknown" else "Unknown"
     
     # Identify discrepancies
     discrepancies = []
@@ -381,6 +484,8 @@ def analyze_account(account_number, bd_data, ac_data):
         "ac_primary_allocation": f"{ac_primary_allocation}%" if ac_primary_allocation > 0 else "N/A",
         "bd_contingent_allocation": f"{bd_contingent_allocation}%" if bd_contingent_allocation > 0 else "N/A",
         "ac_contingent_allocation": f"{ac_contingent_allocation}%" if ac_contingent_allocation > 0 else "N/A",
+        "last_updated": last_updated_info,
+        "last_updated_by": last_updated_by,
         "discrepancies": " | ".join(discrepancies) if discrepancies else "No Issues",
         "discrepancy_count": len(discrepancies),
         "has_issues": len(discrepancies) > 0
@@ -444,11 +549,11 @@ if bd_file and ac_file:
     # Show sample of normalized data
     if len(bd_data) > 0:
         st.write("**BD Sample (first 5 rows):**")
+        bd_sample_cols = ["designation", "designation_normalized", "relationship", "first_name", "last_name", "entity_name", "full_name_normalized"]
         if "designation_type" in bd_data.columns:
-            sample_bd = bd_data[["designation", "designation_normalized", "designation_type", "designation_type_normalized"]].head(5)
-        else:
-            sample_bd = bd_data[["designation", "designation_normalized"]].head(5)
-            st.warning("No 'designation_type' column found in BD data")
+            bd_sample_cols.extend(["designation_type", "designation_type_normalized"])
+        available_bd_cols = [col for col in bd_sample_cols if col in bd_data.columns]
+        sample_bd = bd_data[available_bd_cols].head(5)
         st.dataframe(sample_bd)
         
         # Show unique designation types in BD data
@@ -459,11 +564,11 @@ if bd_file and ac_file:
     
     if len(ac_data) > 0:
         st.write("**AC Sample (first 5 rows):**")
+        ac_sample_cols = ["designation", "designation_normalized", "relationship", "first_name", "last_name", "name", "entity_name", "beneficiary_name", "bene_name", "full_name_normalized"]
         if "designation_type" in ac_data.columns:
-            sample_ac = ac_data[["designation", "designation_normalized", "designation_type", "designation_type_normalized"]].head(5)
-        else:
-            sample_ac = ac_data[["designation", "designation_normalized"]].head(5)
-            st.warning("No 'designation_type' column found in AC data")
+            ac_sample_cols.extend(["designation_type", "designation_type_normalized"])
+        available_ac_cols = [col for col in ac_sample_cols if col in ac_data.columns]
+        sample_ac = ac_data[available_ac_cols].head(5)
         st.dataframe(sample_ac)
         
         # Show unique designation types in AC data
@@ -471,6 +576,14 @@ if bd_file and ac_file:
             unique_ac_types = ac_data["designation_type"].value_counts()
             st.write("**Unique AC Designation Types:**")
             st.dataframe(unique_ac_types)
+            
+        # Debug: Show entity relationships in AC data
+        if "relationship" in ac_data.columns:
+            entity_records = ac_data[ac_data["relationship"].str.lower() == "entity"]
+            if not entity_records.empty:
+                st.write("**AC Entity Records Sample:**")
+                entity_sample_cols = [col for col in ["account_number", "relationship", "first_name", "last_name", "name", "entity_name", "beneficiary_name", "bene_name", "full_name_normalized"] if col in entity_records.columns]
+                st.dataframe(entity_records[entity_sample_cols].head(3))
     
     # Show data overview
     st.subheader("📊 Data Overview")
@@ -519,12 +632,14 @@ if bd_file and ac_file:
         st.info(f"🧠 Memory optimization enabled for {len(all_accounts):,} accounts")
         
         # Process only essential columns to reduce memory usage
-        essential_bd_cols = ['account_number', 'first_name_normalized', 'last_name_normalized', 
-                           'full_name_normalized', 'designation_normalized', 'designation_type_normalized',
-                           'percentage', 'bd_status', 'bd_sync_state']
-        essential_ac_cols = ['account_number', 'first_name_normalized', 'last_name_normalized',
-                           'full_name_normalized', 'designation_normalized', 'designation_type_normalized',
-                           'percentage', 'ac_bene_status', 'ac_account_status', 'ac_sync_state']
+        essential_bd_cols = ['account_number', 'first_name', 'last_name', 'entity_name', 'relationship',
+                           'first_name_normalized', 'last_name_normalized', 'full_name_normalized', 
+                           'designation_normalized', 'designation_type_normalized',
+                           'percentage', 'bd_status', 'bd_sync_state', 'updated', 'updated_by']
+        essential_ac_cols = ['account_number', 'first_name', 'last_name', 'entity_name', 'relationship',
+                           'first_name_normalized', 'last_name_normalized', 'full_name_normalized',
+                           'designation_normalized', 'designation_type_normalized',
+                           'percentage', 'ac_bene_status', 'ac_account_status', 'ac_sync_state', 'updated', 'updated_by']
         
         # Keep only essential columns
         bd_data_optimized = bd_data[[col for col in essential_bd_cols if col in bd_data.columns]].copy()
@@ -642,6 +757,8 @@ if bd_file and ac_file:
                 "ac_beneficiaries",
                 "bd_deleted_benes",
                 "ac_deleted_benes",
+                "last_updated",
+                "last_updated_by",
                 "discrepancies",
                 "discrepancy_count"
             ]],
@@ -686,7 +803,7 @@ if bd_file and ac_file:
             if count > 0:
                 with st.expander(f"Preview {title} (first 5 rows)"):
                     preview_cols = ["account_number", "bd_beneficiaries", "ac_beneficiaries", 
-                                   "bd_sync_state", "ac_sync_state", "discrepancies"]
+                                   "bd_sync_state", "ac_sync_state", "last_updated", "last_updated_by", "discrepancies"]
                     available_cols = [col for col in preview_cols if col in filtered_data.columns]
                     st.dataframe(filtered_data[available_cols].head(5))
             
@@ -765,6 +882,41 @@ if bd_file and ac_file:
             "ac_pending"
         )
         
+        # 8. AC Entity Name Field Usage (New - for spouse/non-spouse using entity_name field)
+        # Filter for AC records where relationship is spouse/non-spouse and using entity_name field
+        ac_name_field_condition = pd.Series(False, index=results_df.index)
+        
+        # Check each account to see if it has AC beneficiaries using entity_name field
+        for idx, row in results_df.iterrows():
+            account_num = row["account_number"]
+            ac_account_data = processing_ac_data[processing_ac_data["account_number"] == account_num] if "account_number" in processing_ac_data.columns else pd.DataFrame()
+            
+            if not ac_account_data.empty:
+                # Check if required columns exist
+                has_relationship = "relationship" in ac_account_data.columns
+                has_first_name = "first_name" in ac_account_data.columns
+                has_last_name = "last_name" in ac_account_data.columns
+                has_entity_name = "entity_name" in ac_account_data.columns
+                
+                if has_relationship and has_first_name and has_last_name and has_entity_name:
+                    # Check for spouse/non-spouse relationships with null first/last names but populated entity_name field
+                    spouse_nonspouse = ac_account_data[
+                        (ac_account_data["relationship"].str.lower().isin(["spouse", "non-spouse"])) &
+                        ((ac_account_data["first_name"].isna()) | (ac_account_data["first_name"] == "")) &
+                        ((ac_account_data["last_name"].isna()) | (ac_account_data["last_name"] == "")) &
+                        (ac_account_data["entity_name"].notna()) & (ac_account_data["entity_name"] != "")
+                    ]
+                    
+                    if not spouse_nonspouse.empty:
+                        ac_name_field_condition.loc[idx] = True
+        
+        create_download_section(
+            "AC Entity Name Field Usage",
+            "AC beneficiaries using 'entity_name' field for spouse/non-spouse relationships",
+            ac_name_field_condition,
+            "ac_entity_name_field"
+        )
+        
         # Summary table of all categories
         st.subheader("📈 Fix Categories Summary")
         summary_data = {
@@ -775,7 +927,8 @@ if bd_file and ac_file:
                 "BD Pending Sync",
                 "BD Failed Sync",
                 "BD Draft Sync",
-                "AC Pending Sync"
+                "AC Pending Sync",
+                "AC Entity Name Field Usage"
             ],
             "Count": [
                 len(results_df[bd_only_condition]),
@@ -784,7 +937,8 @@ if bd_file and ac_file:
                 len(results_df[bd_pending_condition]),
                 len(results_df[bd_failed_condition]),
                 len(results_df[bd_draft_condition]),
-                len(results_df[ac_pending_condition])
+                len(results_df[ac_pending_condition]),
+                len(results_df[ac_name_field_condition])
             ],
             "Priority": [
                 "High - Missing data sync",
@@ -793,7 +947,8 @@ if bd_file and ac_file:
                 "High - Stuck workflow",
                 "Critical - Failed sync",
                 "Low - Draft state",
-                "High - Stuck workflow"
+                "High - Stuck workflow",
+                "Medium - Data structure issue"
             ]
         }
         
