@@ -9,11 +9,25 @@ def normalize_name(name):
     return str(name).strip().lower()
 
 def normalize_designation(value):
+    """Normalize designation values with better handling of AC formats"""
+    if pd.isna(value) or value == "":
+        return "unknown"
+    
     val = str(value).strip().lower()
-    if val in ["p", "primary"]:
+    
+    # Handle BD formats
+    if val in ["primary"]:
         return "primary"
-    elif val in ["s", "contingent", "c"]:
+    elif val in ["contingent"]:
         return "contingent"
+    
+    # Handle AC formats (including potential variations)
+    elif val in ["p", "pri", "prim"]:
+        return "primary"
+    elif val in ["s", "sec", "secondary", "c", "cont"]:
+        return "contingent"
+    
+    # If no mapping found, return the original value for debugging
     return val
 
 def normalize_designation_type(value):
@@ -38,9 +52,10 @@ def get_beneficiary_key(row, is_bd=True):
     designation_type = normalize_designation_type(row.get("designation_type", ""))
     percentage = round(float(row.get("percentage", 0)), 2)
     
-    # Debug print to see what's happening with designations
-    if str(row.get("account_number", "")) == "3AA35013":
-        print(f"DEBUG - Account 3AA35013: designation_raw='{designation_raw}', normalized='{designation}', is_bd={is_bd}")
+    # Debug specific problematic accounts
+    account_num = str(row.get("account_number", ""))
+    if account_num in ["3AA29133", "3AA35013"]:
+        print(f"DEBUG - Account {account_num}: raw_designation='{designation_raw}', normalized='{designation}', is_bd={is_bd}")
     
     # Handle name normalization based on BD vs AC logic
     if is_bd:
