@@ -187,17 +187,13 @@ if bd_file and ac_file and fixed_file:
         bd_df["visibility_status"] = bd_df["status"].fillna("").astype(str).apply(normalize_bd_visibility_status)
         ac_df["visibility_status"] = ac_df["deleted"].fillna("").astype(str).apply(normalize_visibility_status)
 
-        # Separate active and deleted beneficiaries
+        # Separate active beneficiaries only (no need for deleted in post-fix validation)
         bd_active = bd_df[bd_df["visibility_status"] == "active"]
         ac_active = ac_df[ac_df["visibility_status"] == "active"]
-        bd_deleted = bd_df[bd_df["visibility_status"] == "deleted"]
-        ac_deleted = ac_df[ac_df["visibility_status"] == "deleted"]
 
         # Analyze beneficiaries with proper BD vs AC normalization
         bd_grouped = analyze_beneficiaries(bd_active, is_bd=True)
         ac_grouped = analyze_beneficiaries(ac_active, is_bd=False)
-        bd_deleted_grouped = analyze_beneficiaries(bd_deleted, is_bd=True)
-        ac_deleted_grouped = analyze_beneficiaries(ac_deleted, is_bd=False)
 
         fixed_accounts = fixed_df["account_number"].astype(str).str.strip()
 
@@ -246,8 +242,6 @@ if bd_file and ac_file and fixed_file:
             "account_status": account_status,
             "bd_beneficiaries": format_beneficiary_display(bd_data['all_keys']),
             "ac_beneficiaries": format_beneficiary_display(ac_data['all_keys']),
-            "bd_deleted_benes": format_beneficiary_display(bd_deleted_data['all_keys']),
-            "ac_deleted_benes": format_beneficiary_display(ac_deleted_data['all_keys']),
             "bd_primary_allocation": f"{bd_data['primary_allocation']}%" if bd_data['primary'] else "N/A",
             "ac_primary_allocation": f"{ac_data['primary_allocation']}%" if ac_data['primary'] else "N/A",
             "bd_contingent_allocation": f"{bd_data['contingent_allocation']}%" if bd_data['contingent'] else "N/A",
