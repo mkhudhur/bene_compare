@@ -187,7 +187,7 @@ if bd_file and ac_file and fixed_file:
         bd_df["visibility_status"] = bd_df["status"].fillna("").astype(str).apply(normalize_bd_visibility_status)
         ac_df["visibility_status"] = ac_df["deleted"].fillna("").astype(str).apply(normalize_visibility_status)
 
-        # Separate active beneficiaries only (no need for deleted in post-fix validation)
+        # Only process active beneficiaries
         bd_active = bd_df[bd_df["visibility_status"] == "active"]
         ac_active = ac_df[ac_df["visibility_status"] == "active"]
 
@@ -222,10 +222,6 @@ if bd_file and ac_file and fixed_file:
                 account_status = "Active"
         else:
             account_status = "Unknown"
-
-        # Get deleted beneficiaries
-        bd_deleted_data = bd_deleted_grouped.get(acct, {'all_keys': set()})
-        ac_deleted_data = ac_deleted_grouped.get(acct, {'all_keys': set()})
 
         # Check for perfect match
         perfect_match = bd_data['all_keys'] == ac_data['all_keys']
