@@ -12,7 +12,7 @@ def normalize_designation(value):
     val = str(value).strip().lower()
     if val in ["p", "primary"]:
         return "primary"
-    elif val in ["s", "contingent"]:
+    elif val in ["s", "contingent", "c"]:
         return "contingent"
     return val
 
@@ -33,9 +33,14 @@ def normalize_visibility_status(value):
 
 def get_beneficiary_key(row, is_bd=True):
     """Create comprehensive beneficiary key including designation, name, type, and percentage"""
-    designation = normalize_designation(row.get("designation", ""))
+    designation_raw = row.get("designation", "")
+    designation = normalize_designation(designation_raw)
     designation_type = normalize_designation_type(row.get("designation_type", ""))
     percentage = round(float(row.get("percentage", 0)), 2)
+    
+    # Debug print to see what's happening with designations
+    if str(row.get("account_number", "")) == "3AA35013":
+        print(f"DEBUG - Account 3AA35013: designation_raw='{designation_raw}', normalized='{designation}', is_bd={is_bd}")
     
     # Handle name normalization based on BD vs AC logic
     if is_bd:
