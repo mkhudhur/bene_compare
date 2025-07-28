@@ -1,4 +1,28 @@
-import streamlit as st
+def normalize_name_order(name):
+    """Normalize name to handle different word orders"""
+    if not name or not name.strip():
+        return ""
+    
+    # Split name into words and sort them alphabetically
+    # This way "Randy Painter" and "Painter Randy" both become "painter randy"
+    words = name.strip().lower().split()
+    # Remove common prefixes/suffixes and sort
+    normalized_words = sorted([word for word in words if word])
+    return " ".join(normalized_words)
+
+def extract_name_and_designation(row):
+    """Extract just the name and designation, ignoring entity vs individual classification"""
+    raw_designation = row.get("designation", "").strip()
+    designation = normalize_designation(raw_designation)
+    
+    # Try to get name from first/last name fields
+    first_name_raw = row.get("first_name", None)
+    last_name_raw = row.get("last_name", None)
+    first_missing = pd.isna(first_name_raw) or str(first_name_raw).strip() == ""
+    last_missing = pd.isna(last_name_raw) or str(last_name_raw).strip() == ""
+    
+    # If first/last names are missing, use entity_name
+    if firstimport streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Apex Accounts", layout="wide")
@@ -67,12 +91,17 @@ def compare_beneficiaries_flexibly(bd_benes, ac_benes):
     bd_names = {name for designation, name in bd_benes}
     ac_names = {name for designation, name in ac_benes}
     
-    # Check if the names match (regardless of designation differences)
+    # Check if the names match exactly
     names_match = bd_names == ac_names
     
-    # If names match, check designations
+    # Check for name order issues (like "Randy Painter" vs "Painter Randy")
+    name_order_issues = check_name_order_mismatches(bd_names, ac_names)
+    
+    # If names match exactly, check designations
     if names_match:
-        return bd_benes == ac_benes, "Perfect Match" if bd_benes == ac_benes else "Names Match, Designation Differences"
+        return bd_benes == ac_benes, "Perfect Match" if bd_benes == ac_benes else "Names Match, Designation Differences", False
+    elif name_order_issues:
+        return False, "Name Order Mismatch", True
     else:
         # Names don't match - this is a real mismatch
         bd_only_names = bd_names - ac_names
@@ -84,7 +113,18 @@ def compare_beneficiaries_flexibly(bd_benes, ac_benes):
         if ac_only_names:
             mismatch_detail.append(f"AC Only: {', '.join(sorted(ac_only_names))}")
         
-        return False, " | ".join(mismatch_detail)
+        return False, " | ".join(mismatch_detail), False
+
+def check_name_order_mismatches(bd_names, ac_names):
+    """Check if names are the same but in different order"""
+    for bd_name in bd_names:
+        bd_words = set(bd_name.lower().split())
+        for ac_name in ac_names:
+            ac_words = set(ac_name.lower().split())
+            # If same words but different order
+            if bd_words == ac_words and bd_name != ac_name:
+                return True
+    return False
 
 def format_beneficiaries_display(bene_set):
     """Format beneficiaries for display"""
@@ -132,14 +172,15 @@ if bd_file and ac_file:
         ac_benes = grouped_ac.get(acct, set())
         
         # Use flexible comparison
-        is_match, match_details = compare_beneficiaries_flexibly(bd_benes, ac_benes)
+        is_match, match_details, is_name_order_issue = compare_beneficiaries_flexibly(bd_benes, ac_benes)
         
         three_aa_entries.append({
             "account_number": acct,
             "bd_beneficiaries": format_beneficiaries_display(bd_benes),
             "ac_beneficiaries": format_beneficiaries_display(ac_benes),
             "match_status": "✅ Match" if is_match else "❌ Mismatch",
-            "match_details": match_details
+            "match_details": match_details,
+            "is_name_order_issue": is_name_order_issue
         })
     
     three_aa_df = pd.DataFrame(three_aa_entries)
@@ -148,14 +189,15 @@ if bd_file and ac_file:
     total_accounts = len(three_aa_df)
     perfect_matches = len(three_aa_df[three_aa_df["match_details"] == "Perfect Match"])
     name_matches = len(three_aa_df[three_aa_df["match_details"] == "Names Match, Designation Differences"])
-    real_mismatches = total_accounts - perfect_matches - name_matches
+    name_order_issues = len(three_aa_df[three_aa_df["is_name_order_issue"] == True])
+    real_mismatches = total_accounts - perfect_matches - name_matches - name_order_issues
     
     # Display results
     tab = st.tabs(["3AA Accounts Analysis"])[0]
     with tab:
         st.subheader("📊 3AA Accounts Summary")
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("Total 3AA Accounts", f"{total_accounts:,}")
         with col2:
@@ -163,42 +205,60 @@ if bd_file and ac_file:
         with col3:
             st.metric("Name Matches (Minor Issues)", f"{name_matches:,}")
         with col4:
+            st.metric("Name Order Issues", f"{name_order_issues:,}")
+        with col5:
             st.metric("Real Mismatches", f"{real_mismatches:,}")
         
         # Filter options
         st.subheader("🔍 Filter Options")
         show_filter = st.selectbox(
             "Show:",
-            ["All Accounts", "Only Real Mismatches", "Only Perfect Matches", "Only Name Matches (Minor Issues)"]
+            ["All Accounts", "Only Real Mismatches", "Only Perfect Matches", "Only Name Matches (Minor Issues)", "Only Name Order Issues"]
         )
         
         display_df = three_aa_df.copy()
         if show_filter == "Only Real Mismatches":
             display_df = display_df[
-                (~display_df["match_details"].isin(["Perfect Match", "Names Match, Designation Differences"]))
+                (~display_df["match_details"].isin(["Perfect Match", "Names Match, Designation Differences"])) &
+                (display_df["is_name_order_issue"] == False)
             ]
         elif show_filter == "Only Perfect Matches":
             display_df = display_df[display_df["match_details"] == "Perfect Match"]
         elif show_filter == "Only Name Matches (Minor Issues)":
             display_df = display_df[display_df["match_details"] == "Names Match, Designation Differences"]
+        elif show_filter == "Only Name Order Issues":
+            display_df = display_df[display_df["is_name_order_issue"] == True]
         
         st.subheader(f"📋 3AA Accounts Details ({len(display_df):,} accounts)")
         st.dataframe(display_df, use_container_width=True)
         
         # Download options
-        col1, col2 = st.columns(2)
+        st.subheader("📥 Download Options")
+        col1, col2, col3 = st.columns(3)
+        
         with col1:
             st.download_button(
-                label="📥 Download All 3AA Results",
+                label="📊 Download All 3AA Results",
                 data=three_aa_df.to_csv(index=False),
                 file_name="3aa_accounts_all.csv",
                 mime="text/csv"
             )
         
         with col2:
+            if name_order_issues > 0:
+                name_order_df = three_aa_df[three_aa_df["is_name_order_issue"] == True]
+                st.download_button(
+                    label="📝 Download Name Order Issues",
+                    data=name_order_df.to_csv(index=False),
+                    file_name="3aa_accounts_name_order_fixes.csv",
+                    mime="text/csv"
+                )
+        
+        with col3:
             if real_mismatches > 0:
                 real_mismatch_df = three_aa_df[
-                    (~three_aa_df["match_details"].isin(["Perfect Match", "Names Match, Designation Differences"]))
+                    (~three_aa_df["match_details"].isin(["Perfect Match", "Names Match, Designation Differences"])) &
+                    (three_aa_df["is_name_order_issue"] == False)
                 ]
                 st.download_button(
                     label="🚨 Download Real Mismatches Only",
