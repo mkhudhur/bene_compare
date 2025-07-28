@@ -55,8 +55,8 @@ def extract_name_designation_allocation(row):
         last_name = normalize_name(last_name_raw)
         name = f"{first_name} {last_name}".strip()
     
-    # Get allocation percentage
-    allocation = normalize_allocation(row.get("allocation", 0))
+    # Get allocation percentage from "percentage" column
+    allocation = normalize_allocation(row.get("percentage", 0))
     
     return (designation, name, allocation)
 
