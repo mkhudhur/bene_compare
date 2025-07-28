@@ -1,28 +1,4 @@
-def normalize_name_order(name):
-    """Normalize name to handle different word orders"""
-    if not name or not name.strip():
-        return ""
-    
-    # Split name into words and sort them alphabetically
-    # This way "Randy Painter" and "Painter Randy" both become "painter randy"
-    words = name.strip().lower().split()
-    # Remove common prefixes/suffixes and sort
-    normalized_words = sorted([word for word in words if word])
-    return " ".join(normalized_words)
-
-def extract_name_and_designation(row):
-    """Extract just the name and designation, ignoring entity vs individual classification"""
-    raw_designation = row.get("designation", "").strip()
-    designation = normalize_designation(raw_designation)
-    
-    # Try to get name from first/last name fields
-    first_name_raw = row.get("first_name", None)
-    last_name_raw = row.get("last_name", None)
-    first_missing = pd.isna(first_name_raw) or str(first_name_raw).strip() == ""
-    last_missing = pd.isna(last_name_raw) or str(last_name_raw).strip() == ""
-    
-    # If first/last names are missing, use entity_name
-    if firstimport streamlit as st
+import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Apex Accounts", layout="wide")
@@ -85,6 +61,17 @@ def group_beneficiaries_by_name(df):
     
     return grouped
 
+def check_name_order_mismatches(bd_names, ac_names):
+    """Check if names are the same but in different order"""
+    for bd_name in bd_names:
+        bd_words = set(bd_name.lower().split())
+        for ac_name in ac_names:
+            ac_words = set(ac_name.lower().split())
+            # If same words but different order
+            if bd_words == ac_words and bd_name != ac_name:
+                return True
+    return False
+
 def compare_beneficiaries_flexibly(bd_benes, ac_benes):
     """Compare beneficiaries with flexible name matching"""
     # Extract just the names from both sets (ignoring designation for now)
@@ -114,17 +101,6 @@ def compare_beneficiaries_flexibly(bd_benes, ac_benes):
             mismatch_detail.append(f"AC Only: {', '.join(sorted(ac_only_names))}")
         
         return False, " | ".join(mismatch_detail), False
-
-def check_name_order_mismatches(bd_names, ac_names):
-    """Check if names are the same but in different order"""
-    for bd_name in bd_names:
-        bd_words = set(bd_name.lower().split())
-        for ac_name in ac_names:
-            ac_words = set(ac_name.lower().split())
-            # If same words but different order
-            if bd_words == ac_words and bd_name != ac_name:
-                return True
-    return False
 
 def format_beneficiaries_display(bene_set):
     """Format beneficiaries for display"""
@@ -277,13 +253,15 @@ else:
     
     - ✅ **Perfect Match**: Names, designations, and classifications all match
     - 🟡 **Name Matches (Minor Issues)**: Same beneficiary names but different designations (e.g., Primary vs Contingent)
+    - 📝 **Name Order Issues**: Same person but name order differences (e.g., "Randy Painter" vs "Painter Randy")
     - ❌ **Real Mismatches**: Different beneficiary names between systems
     
     ### Key Features:
     - **Ignores entity vs individual classification differences** 
+    - **Detects name order issues** for targeted data quality fixes
     - **Focuses on actual beneficiary name mismatches**
     - **Provides clear categorization** of issue types
     - **Downloadable results** for targeted fixes
     
-    This helps you focus on accounts that truly have different beneficiaries rather than just classification differences.
+    This helps you focus on accounts that truly have different beneficiaries rather than just classification or formatting differences.
     """)
