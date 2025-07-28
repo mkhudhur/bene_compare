@@ -61,19 +61,32 @@ def group_beneficiaries_by_name(df):
     
     return grouped
 
-def check_name_order_mismatches(bd_names, ac_names):
-    """Check if names are the same but in different order"""
+def check_specific_name_order_mismatches(bd_names, ac_names):
+    """Check if names are swapped first/last name between BD and AC"""
+    name_order_issues = []
+    
     for bd_name in bd_names:
-        bd_words = set(bd_name.lower().split())
+        bd_parts = bd_name.strip().split()
+        if len(bd_parts) != 2:  # Only check two-part names
+            continue
+            
+        bd_first, bd_last = bd_parts
+        
         for ac_name in ac_names:
-            ac_words = set(ac_name.lower().split())
-            # If same words but different order
-            if bd_words == ac_words and bd_name != ac_name:
-                return True
-    return False
+            ac_parts = ac_name.strip().split()
+            if len(ac_parts) != 2:  # Only check two-part names
+                continue
+                
+            ac_first, ac_last = ac_parts
+            
+            # Check if first/last are swapped
+            if bd_first == ac_last and bd_last == ac_first:
+                name_order_issues.append((bd_name, ac_name))
+    
+    return name_order_issues
 
 def compare_beneficiaries_flexibly(bd_benes, ac_benes):
-    """Compare beneficiaries with flexible name matching"""
+    """Compare beneficiaries with specific name order mismatch detection"""
     # Extract just the names from both sets (ignoring designation for now)
     bd_names = {name for designation, name in bd_benes}
     ac_names = {name for designation, name in ac_benes}
@@ -81,26 +94,59 @@ def compare_beneficiaries_flexibly(bd_benes, ac_benes):
     # Check if the names match exactly
     names_match = bd_names == ac_names
     
-    # Check for name order issues (like "Randy Painter" vs "Painter Randy")
-    name_order_issues = check_name_order_mismatches(bd_names, ac_names)
+    # Check for specific name order issues (first/last name swapped)
+    name_order_issues = check_specific_name_order_mismatches(bd_names, ac_names)
     
     # If names match exactly, check designations
     if names_match:
-        return bd_benes == ac_benes, "Perfect Match" if bd_benes == ac_benes else "Names Match, Designation Differences", False
+        return bd_benes == ac_benes, "Perfect Match" if bd_benes == ac_benes else "Names Match, Designation Differences", False, []
     elif name_order_issues:
-        return False, "Name Order Mismatch", True
+        # Format the name order issues for display
+        issue_details = []
+        for bd_name, ac_name in name_order_issues:
+            issue_details.append(f"BD: {bd_name.title()} → AC: {ac_name.title()}")
+        return False, f"Name Order Issues: {' | '.join(issue_details)}", True, name_order_issues
     else:
         # Names don't match - this is a real mismatch
         bd_only_names = bd_names - ac_names
         ac_only_names = ac_names - bd_names
         
-        mismatch_detail = []
-        if bd_only_names:
-            mismatch_detail.append(f"BD Only: {', '.join(sorted(bd_only_names))}")
-        if ac_only_names:
-            mismatch_detail.append(f"AC Only: {', '.join(sorted(ac_only_names))}")
+        # Check if any of the "different" names are actually name order issues
+        remaining_bd_names = set(bd_only_names)
+        remaining_ac_names = set(ac_only_names)
+        found_order_issues = check_specific_name_order_mismatches(remaining_bd_names, remaining_ac_names)
         
-        return False, " | ".join(mismatch_detail), False
+        if found_order_issues:
+            # Remove the names that are actually order issues from the mismatch lists
+            for bd_name, ac_name in found_order_issues:
+                remaining_bd_names.discard(bd_name)
+                remaining_ac_names.discard(ac_name)
+            
+            issue_details = []
+            for bd_name, ac_name in found_order_issues:
+                issue_details.append(f"BD: {bd_name.title()} → AC: {ac_name.title()}")
+            
+            # If there are still remaining mismatches after removing order issues
+            if remaining_bd_names or remaining_ac_names:
+                mismatch_detail = []
+                if remaining_bd_names:
+                    mismatch_detail.append(f"BD Only: {', '.join(sorted(remaining_bd_names))}")
+                if remaining_ac_names:
+                    mismatch_detail.append(f"AC Only: {', '.join(sorted(remaining_ac_names))}")
+                combined_details = f"Name Order Issues: {' | '.join(issue_details)} | Real Mismatches: {' | '.join(mismatch_detail)}"
+                return False, combined_details, True, found_order_issues
+            else:
+                # All mismatches were actually name order issues
+                return False, f"Name Order Issues: {' | '.join(issue_details)}", True, found_order_issues
+        else:
+            # Real name mismatches
+            mismatch_detail = []
+            if bd_only_names:
+                mismatch_detail.append(f"BD Only: {', '.join(sorted(bd_only_names))}")
+            if ac_only_names:
+                mismatch_detail.append(f"AC Only: {', '.join(sorted(ac_only_names))}")
+            
+            return False, " | ".join(mismatch_detail), False, []
 
 def format_beneficiaries_display(bene_set):
     """Format beneficiaries for display"""
@@ -147,8 +193,8 @@ if bd_file and ac_file:
         bd_benes = grouped_bd.get(acct, set())
         ac_benes = grouped_ac.get(acct, set())
         
-        # Use flexible comparison
-        is_match, match_details, is_name_order_issue = compare_beneficiaries_flexibly(bd_benes, ac_benes)
+        # Use flexible comparison with specific name order detection
+        is_match, match_details, is_name_order_issue, name_order_pairs = compare_beneficiaries_flexibly(bd_benes, ac_benes)
         
         three_aa_entries.append({
             "account_number": acct,
@@ -249,19 +295,19 @@ else:
     st.markdown("""
     ### What This Tool Does:
     
-    This tool compares 3AA account beneficiaries between BD and AC systems with **flexible name matching**:
+    This tool compares 3AA account beneficiaries between BD and AC systems with **specific name order detection**:
     
     - ✅ **Perfect Match**: Names, designations, and classifications all match
     - 🟡 **Name Matches (Minor Issues)**: Same beneficiary names but different designations (e.g., Primary vs Contingent)
-    - 📝 **Name Order Issues**: Same person but name order differences (e.g., "Randy Painter" vs "Painter Randy")
+    - 📝 **Name Order Issues**: **Specific case where first/last names are swapped** (e.g., "John Smith" in BD vs "Smith John" in AC)
     - ❌ **Real Mismatches**: Different beneficiary names between systems
     
     ### Key Features:
-    - **Ignores entity vs individual classification differences** 
-    - **Detects name order issues** for targeted data quality fixes
-    - **Focuses on actual beneficiary name mismatches**
-    - **Provides clear categorization** of issue types
-    - **Downloadable results** for targeted fixes
+    - **Precise name order detection**: Only flags cases where first and last names are exactly swapped between systems
+    - **Both names must exist**: Name order issues only identified when both versions exist in BD and AC
+    - **Two-part names only**: Only checks names with exactly two parts (first name + last name)
+    - **Clear issue display**: Shows exactly which names are swapped (e.g., "BD: John Smith → AC: Smith John")
+    - **Targeted fixes**: Download specific name order issues for data correction
     
-    This helps you focus on accounts that truly have different beneficiaries rather than just classification or formatting differences.
+    This helps you identify accounts where the same person is listed but with first/last names reversed between systems.
     """)
