@@ -249,7 +249,72 @@ def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
     
     return False, match_details, has_name_order_issue, allocation_issues, total_allocation_issues, name_order_issues, bd_last_updated, ac_last_updated
 
-def format_beneficiaries_display_with_allocation(bene_set):
+def check_repeated_names_in_beneficiary(name):
+    """Check if a beneficiary name has repeated words/phrases"""
+    name_clean = name.strip().lower()
+    words = name_clean.split()
+    
+    # Check for exact word repetitions
+    word_counts = {}
+    for word in words:
+        word_counts[word] = word_counts.get(word, 0) + 1
+    
+    # Find repeated words (excluding common words that might legitimately repeat)
+    common_words = {'the', 'and', 'or', 'of', 'trust', 'family', 'jr', 'sr', 'ii', 'iii', 'iv'}
+    repeated_words = []
+    for word, count in word_counts.items():
+        if count > 1 and word not in common_words and len(word) > 2:
+            repeated_words.append(word)
+    
+    # Also check for phrase repetitions (like "Skach Family Trust Skach Family Trust")
+    name_parts = name_clean.split()
+    mid_point = len(name_parts) // 2
+    
+    # Check if first half equals second half
+    if len(name_parts) >= 4 and len(name_parts) % 2 == 0:
+        first_half = ' '.join(name_parts[:mid_point])
+        second_half = ' '.join(name_parts[mid_point:])
+        if first_half == second_half:
+            return True, f"Full phrase repeated: '{first_half}'"
+    
+    # Check for partial phrase repetitions
+    for i in range(2, mid_point + 1):
+        phrase = ' '.join(name_parts[:i])
+        rest_of_name = ' '.join(name_parts[i:])
+        if phrase in rest_of_name:
+            return True, f"Phrase repeated: '{phrase}'"
+    
+    if repeated_words:
+        return True, f"Words repeated: {', '.join(repeated_words)}"
+    
+    return False, ""
+
+def find_accounts_with_repeated_names(grouped_data, system_name):
+    """Find accounts that have beneficiaries with repeated names"""
+    repeated_name_accounts = []
+    
+    for acct, bene_set in grouped_data.items():
+        account_issues = []
+        
+        for designation, name, allocation, last_updated in bene_set:
+            has_repetition, repetition_detail = check_repeated_names_in_beneficiary(name)
+            if has_repetition:
+                account_issues.append({
+                    'designation': designation,
+                    'name': name.title(),
+                    'allocation': allocation,
+                    'last_updated': last_updated,
+                    'repetition_detail': repetition_detail,
+                    'system': system_name
+                })
+        
+        if account_issues:
+            repeated_name_accounts.append({
+                'account_number': acct,
+                'issues': account_issues
+            })
+    
+    return repeated_name_accounts
     """Format beneficiaries for display with allocation"""
     if not bene_set:
         return "None"
@@ -316,6 +381,41 @@ if bd_file and ac_file:
             "total_allocation_issues": has_total_allocation_issues
         })
     
+    # --- Find Repeated Name Issues ---
+    bd_repeated_names = find_accounts_with_repeated_names(grouped_bd, "BD")
+    ac_repeated_names = find_accounts_with_repeated_names(grouped_ac, "AC")
+    
+    # Combine and format repeated name issues
+    all_repeated_names = []
+    
+    for account_data in bd_repeated_names:
+        acct = account_data['account_number']
+        for issue in account_data['issues']:
+            all_repeated_names.append({
+                'account_number': acct,
+                'system': 'BD',
+                'designation': issue['designation'].title(),
+                'problematic_name': issue['name'],
+                'allocation': f"{issue['allocation']}%",
+                'last_updated': issue['last_updated'],
+                'repetition_detail': issue['repetition_detail']
+            })
+    
+    for account_data in ac_repeated_names:
+        acct = account_data['account_number']
+        for issue in account_data['issues']:
+            all_repeated_names.append({
+                'account_number': acct,
+                'system': 'AC',
+                'designation': issue['designation'].title(),
+                'problematic_name': issue['name'],
+                'allocation': f"{issue['allocation']}%",
+                'last_updated': issue['last_updated'],
+                'repetition_detail': issue['repetition_detail']
+            })
+    
+    repeated_names_df = pd.DataFrame(all_repeated_names)
+    
     three_aa_df = pd.DataFrame(three_aa_entries)
     
     # Summary metrics
@@ -327,8 +427,9 @@ if bd_file and ac_file:
     real_mismatches = total_accounts - perfect_matches - name_matches - name_order_issues - allocation_issues
     
     # Display results
-    tab = st.tabs(["3AA Accounts Analysis"])[0]
-    with tab:
+    tab1, tab2 = st.tabs(["3AA Accounts Analysis", "Repeated Name Issues"])
+    
+    with tab1:
         st.subheader("📊 3AA Accounts Summary")
         
         col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -421,6 +522,62 @@ if bd_file and ac_file:
                     file_name="3aa_accounts_real_mismatches.csv",
                     mime="text/csv"
                 )
+    
+    with tab2:
+        st.subheader("🔍 Repeated Name Issues")
+        
+        if len(repeated_names_df) > 0:
+            # Summary metrics for repeated names
+            total_repeated_issues = len(repeated_names_df)
+            bd_issues = len(repeated_names_df[repeated_names_df["system"] == "BD"])
+            ac_issues = len(repeated_names_df[repeated_names_df["system"] == "AC"])
+            unique_accounts_affected = repeated_names_df["account_number"].nunique()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Repeated Name Issues", f"{total_repeated_issues:,}")
+            with col2:
+                st.metric("BD Issues", f"{bd_issues:,}")
+            with col3:
+                st.metric("AC Issues", f"{ac_issues:,}")
+            with col4:
+                st.metric("Accounts Affected", f"{unique_accounts_affected:,}")
+            
+            # Filter options for repeated names
+            st.subheader("🔍 Filter Repeated Name Issues")
+            system_filter = st.selectbox(
+                "Show issues from:",
+                ["All Systems", "BD Only", "AC Only"],
+                key="repeated_names_filter"
+            )
+            
+            display_repeated_df = repeated_names_df.copy()
+            if system_filter == "BD Only":
+                display_repeated_df = display_repeated_df[display_repeated_df["system"] == "BD"]
+            elif system_filter == "AC Only":
+                display_repeated_df = display_repeated_df[display_repeated_df["system"] == "AC"]
+            
+            st.subheader(f"📋 Repeated Name Issues Details ({len(display_repeated_df):,} issues)")
+            st.dataframe(display_repeated_df, use_container_width=True)
+            
+            # Download option for repeated names
+            st.subheader("📥 Download Repeated Name Issues")
+            st.download_button(
+                label="📝 Download Repeated Name Issues",
+                data=repeated_names_df.to_csv(index=False),
+                file_name="repeated_name_issues.csv",
+                mime="text/csv"
+            )
+            
+            # Show examples of the most common repeated name patterns
+            st.subheader("📊 Most Common Repetition Patterns")
+            pattern_counts = repeated_names_df["repetition_detail"].value_counts().head(10)
+            if len(pattern_counts) > 0:
+                st.bar_chart(pattern_counts)
+        
+        else:
+            st.success("🎉 No repeated name issues found in either BD or AC systems!")
+            st.info("All beneficiary names appear to be properly formatted without duplications.")
 
 else:
     st.info("👆 Please upload both BD and AC CSV files to begin analysis.")
