@@ -279,9 +279,9 @@ if bd_file and ac_file:
     bd_active_df = bd_df[bd_df["visibility_status"] == "active"]
     ac_active_df = ac_df[ac_df["visibility_status"] == "active"]
     
-    # Group beneficiaries with allocation information
-    grouped_bd = group_beneficiaries_with_allocation(bd_active_df)
-    grouped_ac = group_beneficiaries_with_allocation(ac_active_df)
+    # Group beneficiaries with allocation and date information
+    grouped_bd = group_beneficiaries_with_allocation_and_dates(bd_active_df)
+    grouped_ac = group_beneficiaries_with_allocation_and_dates(ac_active_df)
     
     # --- 3AA Accounts Logic ---
     three_aa_accounts = {
@@ -295,7 +295,7 @@ if bd_file and ac_file:
         ac_benes = grouped_ac.get(acct, set())
         
         # Comprehensive comparison
-        is_match, match_details, is_name_order_issue, allocation_issues, total_allocation_issues, name_order_pairs = compare_beneficiaries_comprehensive(bd_benes, ac_benes)
+        is_match, match_details, is_name_order_issue, allocation_issues, total_allocation_issues, name_order_pairs, bd_last_updated, ac_last_updated = compare_beneficiaries_comprehensive(bd_benes, ac_benes)
         
         # Create issue flags for filtering
         has_allocation_issues = len(allocation_issues) > 0
@@ -308,6 +308,8 @@ if bd_file and ac_file:
             "ac_beneficiaries": format_beneficiaries_display_with_allocation(ac_benes),
             "match_status": "✅ Match" if is_match else "❌ Mismatch",
             "match_details": match_details,
+            "bd_last_updated": bd_last_updated,
+            "ac_last_updated": ac_last_updated,
             "is_name_order_issue": is_name_order_issue,
             "has_allocation_issues": has_any_allocation_issues,
             "individual_allocation_issues": has_allocation_issues,
