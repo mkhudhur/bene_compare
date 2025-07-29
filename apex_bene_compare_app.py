@@ -266,26 +266,33 @@ def check_repeated_names_in_beneficiary(name):
         if count > 1 and word not in common_words and len(word) > 2:
             repeated_words.append(word)
     
-    # Also check for phrase repetitions (like "Skach Family Trust Skach Family Trust")
+    # Check for phrase repetitions (like "Aslan Family Trust Aslan Family Trust")
     name_parts = name_clean.split()
-    mid_point = len(name_parts) // 2
     
-    # Check if first half equals second half
+    # Check if first half equals second half (for even number of words)
     if len(name_parts) >= 4 and len(name_parts) % 2 == 0:
+        mid_point = len(name_parts) // 2
         first_half = ' '.join(name_parts[:mid_point])
         second_half = ' '.join(name_parts[mid_point:])
         if first_half == second_half:
-            return True, f"Full phrase repeated: '{first_half}'"
+            return True, f"Full phrase repeated: '{first_half.title()}'"
     
-    # Check for partial phrase repetitions
-    for i in range(2, mid_point + 1):
-        phrase = ' '.join(name_parts[:i])
-        rest_of_name = ' '.join(name_parts[i:])
-        if phrase in rest_of_name:
-            return True, f"Phrase repeated: '{phrase}'"
+    # Check for partial phrase repetitions at different positions
+    for phrase_length in range(2, len(name_parts) // 2 + 1):
+        for start_pos in range(len(name_parts) - phrase_length + 1):
+            phrase = ' '.join(name_parts[start_pos:start_pos + phrase_length])
+            
+            # Check if this phrase appears again later in the name
+            remaining_parts = name_parts[start_pos + phrase_length:]
+            if len(remaining_parts) >= phrase_length:
+                for check_pos in range(len(remaining_parts) - phrase_length + 1):
+                    check_phrase = ' '.join(remaining_parts[check_pos:check_pos + phrase_length])
+                    if phrase == check_phrase:
+                        return True, f"Phrase repeated: '{phrase.title()}'"
     
+    # Check for repeated individual words (excluding common ones)
     if repeated_words:
-        return True, f"Words repeated: {', '.join(repeated_words)}"
+        return True, f"Words repeated: {', '.join([w.title() for w in repeated_words])}"
     
     return False, ""
 
