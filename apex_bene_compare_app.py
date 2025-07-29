@@ -36,8 +36,8 @@ def normalize_allocation(value):
     except (ValueError, TypeError):
         return 0.0
 
-def extract_name_designation_allocation(row):
-    """Extract name, designation, and allocation from a row"""
+def extract_name_designation_allocation_date(row):
+    """Extract name, designation, allocation, and last updated date from a row"""
     raw_designation = row.get("designation", "").strip()
     designation = normalize_designation(raw_designation)
     
@@ -58,39 +58,48 @@ def extract_name_designation_allocation(row):
     # Get allocation percentage from "percentage" column
     allocation = normalize_allocation(row.get("percentage", 0))
     
-    return (designation, name, allocation)
+    # Get last updated date - try multiple possible column names
+    last_updated = ""
+    possible_date_columns = ["last_updated", "updated_date", "modified_date", "date_modified", "last_modified", "updated", "modified"]
+    
+    for col in possible_date_columns:
+        if col in row and not pd.isna(row.get(col)) and str(row.get(col)).strip() != "":
+            last_updated = str(row.get(col)).strip()
+            break
+    
+    return (designation, name, allocation, last_updated)
 
-def group_beneficiaries_with_allocation(df):
-    """Group beneficiaries by account with allocation information"""
+def group_beneficiaries_with_allocation_and_dates(df):
+    """Group beneficiaries by account with allocation and date information"""
     grouped = {}
     for _, row in df.iterrows():
         acct = str(row.get("account_number")).strip()
-        designation, name, allocation = extract_name_designation_allocation(row)
+        designation, name, allocation, last_updated = extract_name_designation_allocation_date(row)
         
         if acct not in grouped:
             grouped[acct] = set()
         
         # Only add if we have a valid name
         if name and name.strip():
-            grouped[acct].add((designation, name, allocation))
+            grouped[acct].add((designation, name, allocation, last_updated))
     
     return grouped
 
 def check_specific_name_order_mismatches(bd_data, ac_data):
     """Check if names are swapped first/last name between BD and AC"""
-    bd_names = {(name, designation, allocation) for designation, name, allocation in bd_data}
-    ac_names = {(name, designation, allocation) for designation, name, allocation in ac_data}
+    bd_names = {(name, designation, allocation) for designation, name, allocation, last_updated in bd_data}
+    ac_names = {(name, designation, allocation) for designation, name, allocation, last_updated in ac_data}
     
     name_order_issues = []
     
-    for bd_designation, bd_name, bd_allocation in bd_data:
+    for bd_designation, bd_name, bd_allocation, bd_date in bd_data:
         bd_parts = bd_name.strip().split()
         if len(bd_parts) != 2:  # Only check two-part names
             continue
             
         bd_first, bd_last = bd_parts
         
-        for ac_designation, ac_name, ac_allocation in ac_data:
+        for ac_designation, ac_name, ac_allocation, ac_date in ac_data:
             ac_parts = ac_name.strip().split()
             if len(ac_parts) != 2:  # Only check two-part names
                 continue
@@ -100,25 +109,25 @@ def check_specific_name_order_mismatches(bd_data, ac_data):
             # Check if first/last are swapped
             if bd_first == ac_last and bd_last == ac_first:
                 name_order_issues.append((
-                    (bd_designation, bd_name, bd_allocation),
-                    (ac_designation, ac_name, ac_allocation)
+                    (bd_designation, bd_name, bd_allocation, bd_date),
+                    (ac_designation, ac_name, ac_allocation, ac_date)
                 ))
     
     return name_order_issues
 
 def check_allocation_matches(bd_data, ac_data):
     """Check if allocations match between BD and AC for the same beneficiaries"""
-    # Create dictionaries for easy lookup: {(designation, name): allocation}
-    bd_allocations = {(designation, name): allocation for designation, name, allocation in bd_data}
-    ac_allocations = {(designation, name): allocation for designation, name, allocation in ac_data}
+    # Create dictionaries for easy lookup: {(designation, name): (allocation, date)}
+    bd_allocations = {(designation, name): (allocation, last_updated) for designation, name, allocation, last_updated in bd_data}
+    ac_allocations = {(designation, name): (allocation, last_updated) for designation, name, allocation, last_updated in ac_data}
     
     allocation_issues = []
     
     # Check allocations for matching beneficiaries
     for (designation, name) in bd_allocations:
         if (designation, name) in ac_allocations:
-            bd_alloc = bd_allocations[(designation, name)]
-            ac_alloc = ac_allocations[(designation, name)]
+            bd_alloc, bd_date = bd_allocations[(designation, name)]
+            ac_alloc, ac_date = ac_allocations[(designation, name)]
             
             # Allow for small floating point differences
             if abs(bd_alloc - ac_alloc) > 0.01:
@@ -127,7 +136,9 @@ def check_allocation_matches(bd_data, ac_data):
                     'name': name.title(),
                     'bd_allocation': bd_alloc,
                     'ac_allocation': ac_alloc,
-                    'difference': abs(bd_alloc - ac_alloc)
+                    'difference': abs(bd_alloc - ac_alloc),
+                    'bd_date': bd_date,
+                    'ac_date': ac_date
                 })
     
     return allocation_issues
@@ -138,11 +149,11 @@ def check_total_allocations(bd_data, ac_data):
     bd_totals = {'primary': 0.0, 'contingent': 0.0}
     ac_totals = {'primary': 0.0, 'contingent': 0.0}
     
-    for designation, name, allocation in bd_data:
+    for designation, name, allocation, last_updated in bd_data:
         if designation in bd_totals:
             bd_totals[designation] += allocation
     
-    for designation, name, allocation in ac_data:
+    for designation, name, allocation, last_updated in ac_data:
         if designation in ac_totals:
             ac_totals[designation] += allocation
     
@@ -162,10 +173,10 @@ def check_total_allocations(bd_data, ac_data):
     return total_issues
 
 def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
-    """Comprehensive comparison including names, designations, and allocations"""
+    """Comprehensive comparison including names, designations, allocations, and dates"""
     # Extract just the names and designations for basic comparison
-    bd_names_designations = {(designation, name) for designation, name, allocation in bd_benes}
-    ac_names_designations = {(designation, name) for designation, name, allocation in ac_benes}
+    bd_names_designations = {(designation, name) for designation, name, allocation, last_updated in bd_benes}
+    ac_names_designations = {(designation, name) for designation, name, allocation, last_updated in ac_benes}
     
     # Check if names and designations match exactly
     names_designations_match = bd_names_designations == ac_names_designations
@@ -179,17 +190,24 @@ def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
     # Check total allocation issues
     total_allocation_issues = check_total_allocations(bd_benes, ac_benes)
     
+    # Extract dates for display
+    bd_dates = {last_updated for designation, name, allocation, last_updated in bd_benes if last_updated}
+    ac_dates = {last_updated for designation, name, allocation, last_updated in ac_benes if last_updated}
+    
+    bd_last_updated = max(bd_dates) if bd_dates else ""
+    ac_last_updated = max(ac_dates) if ac_dates else ""
+    
     # Determine match status and details
     issues = []
     has_name_order_issue = False
     
     if names_designations_match and bd_benes == ac_benes:
-        return True, "Perfect Match", False, [], [], []
+        return True, "Perfect Match", False, [], [], [], bd_last_updated, ac_last_updated
     
     if name_order_issues:
         has_name_order_issue = True
         issue_details = []
-        for (bd_designation, bd_name, bd_allocation), (ac_designation, ac_name, ac_allocation) in name_order_issues:
+        for (bd_designation, bd_name, bd_allocation, bd_date), (ac_designation, ac_name, ac_allocation, ac_date) in name_order_issues:
             issue_details.append(f"BD: {bd_name.title()} → AC: {ac_name.title()}")
         issues.append(f"Name Order Issues: {' | '.join(issue_details)}")
     
@@ -208,9 +226,9 @@ def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
     if names_designations_match and not name_order_issues:
         # Names and designations match, but allocations might differ
         if allocation_issues or total_allocation_issues:
-            return False, " | ".join(issues), False, allocation_issues, total_allocation_issues, []
+            return False, " | ".join(issues), False, allocation_issues, total_allocation_issues, [], bd_last_updated, ac_last_updated
         else:
-            return True, "Names Match, Designation Differences", False, [], [], []
+            return True, "Names Match, Designation Differences", False, [], [], [], bd_last_updated, ac_last_updated
     
     if not names_designations_match and not name_order_issues:
         # Real name/designation mismatches
@@ -229,7 +247,7 @@ def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
     
     match_details = " | ".join(issues) if issues else "Unknown Issue"
     
-    return False, match_details, has_name_order_issue, allocation_issues, total_allocation_issues, name_order_issues
+    return False, match_details, has_name_order_issue, allocation_issues, total_allocation_issues, name_order_issues, bd_last_updated, ac_last_updated
 
 def format_beneficiaries_display_with_allocation(bene_set):
     """Format beneficiaries for display with allocation"""
@@ -237,7 +255,7 @@ def format_beneficiaries_display_with_allocation(bene_set):
         return "None"
     
     formatted = []
-    for designation, name, allocation in sorted(bene_set):
+    for designation, name, allocation, last_updated in sorted(bene_set):
         formatted.append(f"{designation.title()}: {name.title()} ({allocation}%)")
     
     return " | ".join(formatted)
