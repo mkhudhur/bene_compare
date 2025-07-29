@@ -101,6 +101,26 @@ with col4:
             with col2:
                 st.metric("Specified Accounts Found", f"{len(specified_accounts_df)} / {len(repeated_name_account_list)}")
         else:
+            st.info("None of the specified accounts with repeated names were found in the current dataset.")202", "3AA11733", "3AA12893", 
+            "3AA20453", "3AA12655"
+        ]
+        
+        # Filter the main dataframe for these specific accounts
+        specified_accounts_df = three_aa_df[three_aa_df["account_number"].isin(repeated_name_account_list)]
+        
+        if len(specified_accounts_df) > 0:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📋 Download Specified Repeated Name Accounts",
+                    data=specified_accounts_df.to_csv(index=False),
+                    file_name="specified_repeated_name_accounts.csv",
+                    mime="text/csv",
+                    help=f"Download {len(specified_accounts_df)} accounts from your specified list"
+                )
+            with col2:
+                st.metric("Specified Accounts Found", f"{len(specified_accounts_df)} / {len(repeated_name_account_list)}")
+        else:
             st.info("None of the specified accounts with repeated names were found in the current dataset.")import streamlit as st
 import pandas as pd
 
