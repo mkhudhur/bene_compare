@@ -1,127 +1,4 @@
-with col4:
-            if real_mismatches > 0:
-                real_mismatch_df = three_aa_df[
-                    (~three_aa_df["match_details"].isin(["Perfect Match", "Names Match, Designation Differences"])) &
-                    (three_aa_df["is_name_order_issue"] == False) &
-                    (three_aa_df["has_allocation_issues"] == False)
-                ]
-                st.download_button(
-                    label="🚨 Download Real Mismatches Only",
-                    data=real_mismatch_df.to_csv(index=False),
-                    file_name="3aa_accounts_real_mismatches.csv",
-                    mime="text/csv"
-                )
-        
-        # Special download for user-specified accounts with repeated names
-        st.subheader("📥 Special Downloads")
-        
-        # List of accounts with repeated name issues (from user)
-        repeated_name_account_list = [
-            "3AA24505", "3AA39997", "3AA20200", "3AA08615", "3AA28991", "3AA23625", "3AA23109", "3AA29177", 
-            "3AA37439", "3AA36909", "3AA18746", "3AA23696", "3AA27375", "3AA39620", "3AA24922", "3AA20755", 
-            "3AA19654", "3AA25770", "3AA42413", "3AA29263", "3AA45269", "3AA32585", "3AA34732", "3AA22260", 
-            "3AA35441", "3AA16862", "3AA10133", "3AA23475", "3AA35486", "3AA16779", "3AA34677", "3AA39403", 
-            "3AA34186", "3AA38133", "3AA21580", "3AA21579", "3AA06744", "3AA12135", "3AA40074", "3AA46425", 
-            "3AA21474", "3AA41190", "3AA24435", "3AA18715", "3AA28239", "3AA21951", "3AA30022", "3AA45578", 
-            "3AA13625", "3AA24890", "3AA34881", "3AA18294", "3AA42327", "3AA22994", "3AA12361", "3AA19996", 
-            "3AA20199", "3AA26326", "3AA31957", "3AA19149", "3AA21938", "3AA39128", "3AA44009", "3AA20450", 
-            "3AA14943", "3AA38592", "3AA22232", "3AA21840", "3AA16004", "3AA22811", "3AA25792", "3AA29919", 
-            "3AA11599", "3AA28989", "3AA18892", "3AA27670", "3AA12049", "3AA20340", "3AA39778", "3AA41110", 
-            "3AA21314", "3AA18865", "3AA16155", "3AA27495", "3AA10095", "3AA19615", "3AA26362", "3AA40527", 
-            "3AA20091", "3AA09239", "3AA30187", "3AA22152", "3AA11598", "3AA30178", "3AA40108", "3AA27669", 
-            "3AA08404", "3AA45265", "3AA26457", "3AA23680", "3AA20920", "3AA24434", "3AA45249", "3AA22231", 
-            "3AA27039", "3AA24339", "3AA45952", "3AA28442", "3AA41643", "3AA44224", "3AA16473", "3AA12657", 
-            "3AA22807", "3AA24370", "3AA44700", "3AA41948", "3AA18516", "3AA08522", "3AA18862", "3AA12652", 
-            "3AA31960", "3AA23054", "3AA25352", "3AA08521", "3AA24341", "3AA23002", "3AA39343", "3AA13897", 
-            "3AA36334", "3AA14947", "3AA18528", "3AA36007", "3AA37442", "3AA30422", "3AA28227", "3AA39404", 
-            "3AA37484", "3AA23011", "3AA34341", "3AA17154", "3AA19447", "3AA16807", "3AA37314", "3AA26325", 
-            "3AA18767", "3AA21220", "3AA11531", "3AA26838", "3AA42328", "3AA28851", "3AA41186", "3AA44008", 
-            "3AA32097", "3AA44922", "3AA12399", "3AA09340", "3AA39380", "3AA09807", "3AA41029", "3AA17122", 
-            "3AA20383", "3AA29090", "3AA29370", "3AA37451", "3AA22974", "3AA28979", "3AA25430", "3AA18893", 
-            "3AA45165", "3AA33987", "3AA12656", "3AA18747", "3AA21360", "3AA37937", "3AA42330", "3AA20857", 
-            "3AA24049", "3AA23144", "3AA23282", "3AA12770", "3AA41744", "3AA22975", "3AA12895", "3AA22154", 
-            "3AA42309", "3AA10225", "3AA11985", "3AA43897", "3AA46334", "3AA24132", "3AA39437", "3AA28440", 
-            "3AA18500", "3AA34066", "3AA40979", "3AA26633", "3AA27078", "3AA05986", "3AA31056", "3AA24377", 
-            "3AA28416", "3AA18863", "3AA42436", "3AA27772", "3AA19226", "3AA22949", "3AA26647", "3AA41109", 
-            "3AA28237", "3AA36958", "3AA36737", "3AA17511", "3AA16154", "3AA16381", "3AA20792", "3AA43578", 
-            "3AA43120", "3AA40195", "3AA34014", "3AA43888", "3AA21182", "3AA20385", "3AA44391", "3AA41832", 
-            "3AA35548", "3AA29374", "3AA07377", "3AA44949", "3AA27079", "3AA21581", "3AA28228", "3AA44250", 
-            "3AA20090", "3AA19499", "3AA27372", "3AA30049", "3AA37485", "3AA42323", "3AA29536", "3AA25460", 
-            "3AA41439", "3AA36333", "3AA22034", "3AA16005", "3AA14109", "3AA26074", "3AA23993", "3AA17070", 
-            "3AA41772", "3AA42348", "3AA44711", "3AA38846", "3AA15060", "3AA09154", "3AA38887", "3AA08896", 
-            "3AA38538", "3AA22261", "3AA22651", "3AA08956", "3AA25767", "3AA34018", "3AA45264", "3AA16500", 
-            "3AA19446", "3AA20195", "3AA25588", "3AA46112", "3AA37318", "3AA37677", "3AA12359", "3AA18693", 
-            "3AA17162", "3AA42442", "3AA42943", "3AA22683", "3AA26158", "3AA24506", "3AA38616", "3AA22993", 
-            "3AA13527", "3AA29178", "3AA24288", "3AA08523", "3AA43119", "3AA17291", "3AA18328", "3AA24966", 
-            "3AA42676", "3AA41713", "3AA21464", "3AA28980", "3AA19222", "3AA06536", "3AA08671", "3AA13022", 
-            "3AA28744", "3AA38593", "3AA36004", "3AA28441", "3AA40783", "3AA14030", "3AA30544", "3AA31237", 
-            "3AA08955", "3AA31952", "3AA12659", "3AA19846", "3AA38954", "3AA18784", "3AA16856", "3AA24200", 
-            "3AA32504", "3AA16881", "3AA23070", "3AA29928", "3AA27599", "3AA28525", "3AA24001", "3AA40981", 
-            "3AA41712", "3AA43084", "3AA18766", "3AA16846", "3AA35534", "3AA34880", "3AA38542", "3AA39689", 
-            "3AA24551", "3AA23705", "3AA19398", "3AA14524", "3AA24820", "3AA08426", "3AA31139", "3AA34136", 
-            "3AA40819", "3AA19936", "3AA26467", "3AA37324", "3AA39201", "3AA24149", "3AA41842", "3AA44150", 
-            "3AA44249", "3AA26193", "3AA26324", "3AA36331", "3AA44921", "3AA16704", "3AA24818", "3AA29921", 
-            "3AA36910", "3AA41193", "3AA39379", "3AA14876", "3AA46335", "3AA22027", "3AA22872", "3AA31234", 
-            "3AA26075", "3AA23056", "3AA09915", "3AA20559", "3AA40106", "3AA23474", "3AA38886", "3AA20384", 
-            "3AA27600", "3AA07286", "3AA22871", "3AA08233", "3AA44035", "3AA28526", "3AA40782", "3AA13642", 
-            "3AA40816", "3AA23283", "3AA11722", "3AA21934", "3AA41986", "3AA31783", "3AA23706", "3AA12653", 
-            "3AA09125", "3AA06761", "3AA19228", "3AA33404", "3AA41395", "3AA05541", "3AA34137", "3AA34281", 
-            "3AA17220", "3AA07380", "3AA41198", "3AA44026", "3AA41194", "3AA21463", "3AA22682", "3AA18716", 
-            "3AA38425", "3AA12195", "3AA39473", "3AA20856", "3AA08670", "3AA43581", "3AA12402", "3AA14946", 
-            "3AA16636", "3AA30046", "3AA19229", "3AA24857", "3AA14944", "3AA18753", "3AA27463", "3AA37482", 
-            "3AA19847", "3AA37478", "3AA28330", "3AA43184", "3AA46241", "3AA31951", "3AA42232", "3AA12395", 
-            "3AA20791", "3AA43577", "3AA26825", "3AA29371", "3AA34487", "3AA39375", "3AA22219", "3AA39497", 
-            "3AA16780", "3AA12483", "3AA39829", "3AA41516", "3AA38783", "3AA21155", "3AA42331", "3AA19227", 
-            "3AA24655", "3AA43121", "3AA42072", "3AA19617", "3AA18748", "3AA29927", "3AA13198", "3AA46332", 
-            "3AA18529", "3AA25772", "3AA12033", "3AA18669", "3AA23112", "3AA23055", "3AA28529", "3AA41665", 
-            "3AA44511", "3AA27063", "3AA08673", "3AA32501", "3AA36005", "3AA42269", "3AA18688", "3AA23093", 
-            "3AA16001", "3AA23992", "3AA07379", "3AA43942", "3AA41841", "3AA09147", "3AA09638", "3AA12583", 
-            "3AA25431", "3AA36394", "3AA41108", "3AA36332", "3AA09891", "3AA41460", "3AA43579", "3AA45967", 
-            "3AA38682", "3AA20341", "3AA13660", "3AA23703", "3AA20921", "3AA21028", "3AA20194", "3AA18515", 
-            "3AA06981", "3AA14011", "3AA45951", "3AA16253", "3AA21475", "3AA07869", "3AA16726", "3AA17878", 
-            "3AA09122", "3AA06052", "3AA07378", "3AA19453", "3AA23737", "3AA38551", "3AA45267", "3AA14577", 
-            "3AA17073", "3AA25860", "3AA12116", "3AA18694", "3AA22650", "3AA23830", "3AA29372", "3AA39127", 
-            "3AA13898", "3AA42324", "3AA22789", "3AA10123", "3AA46528", "3AA39202", "3AA11733", "3AA12893", 
-            "3AA20453", "3AA12655"
-        ]
-        
-        # Filter the main dataframe for these specific accounts
-        specified_accounts_df = three_aa_df[three_aa_df["account_number"].isin(repeated_name_account_list)]
-        
-        if len(specified_accounts_df) > 0:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📋 Download Specified Repeated Name Accounts",
-                    data=specified_accounts_df.to_csv(index=False),
-                    file_name="specified_repeated_name_accounts.csv",
-                    mime="text/csv",
-                    help=f"Download {len(specified_accounts_df)} accounts from your specified list"
-                )
-            with col2:
-                st.metric("Specified Accounts Found", f"{len(specified_accounts_df)} / {len(repeated_name_account_list)}")
-        else:
-            st.info("None of the specified accounts with repeated names were found in the current dataset.")202", "3AA11733", "3AA12893", 
-            "3AA20453", "3AA12655"
-        ]
-        
-        # Filter the main dataframe for these specific accounts
-        specified_accounts_df = three_aa_df[three_aa_df["account_number"].isin(repeated_name_account_list)]
-        
-        if len(specified_accounts_df) > 0:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📋 Download Specified Repeated Name Accounts",
-                    data=specified_accounts_df.to_csv(index=False),
-                    file_name="specified_repeated_name_accounts.csv",
-                    mime="text/csv",
-                    help=f"Download {len(specified_accounts_df)} accounts from your specified list"
-                )
-            with col2:
-                st.metric("Specified Accounts Found", f"{len(specified_accounts_df)} / {len(repeated_name_account_list)}")
-        else:
-            st.info("None of the specified accounts with repeated names were found in the current dataset.")import streamlit as st
+import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Apex Accounts", layout="wide")
@@ -207,6 +84,80 @@ def group_beneficiaries_with_allocation_and_dates(df):
             grouped[acct].add((designation, name, allocation, last_updated))
     
     return grouped
+
+def check_repeated_names_in_beneficiary(name):
+    """Check if a beneficiary name has repeated words/phrases"""
+    name_clean = name.strip().lower()
+    words = name_clean.split()
+    
+    # Check for exact word repetitions
+    word_counts = {}
+    for word in words:
+        word_counts[word] = word_counts.get(word, 0) + 1
+    
+    # Find repeated words (excluding common words that might legitimately repeat)
+    common_words = {'the', 'and', 'or', 'of', 'trust', 'family', 'jr', 'sr', 'ii', 'iii', 'iv'}
+    repeated_words = []
+    for word, count in word_counts.items():
+        if count > 1 and word not in common_words and len(word) > 2:
+            repeated_words.append(word)
+    
+    # Check for phrase repetitions (like "Aslan Family Trust Aslan Family Trust")
+    name_parts = name_clean.split()
+    
+    # Check if first half equals second half (for even number of words)
+    if len(name_parts) >= 4 and len(name_parts) % 2 == 0:
+        mid_point = len(name_parts) // 2
+        first_half = ' '.join(name_parts[:mid_point])
+        second_half = ' '.join(name_parts[mid_point:])
+        if first_half == second_half:
+            return True, f"Full phrase repeated: '{first_half.title()}'"
+    
+    # Check for partial phrase repetitions at different positions
+    for phrase_length in range(2, len(name_parts) // 2 + 1):
+        for start_pos in range(len(name_parts) - phrase_length + 1):
+            phrase = ' '.join(name_parts[start_pos:start_pos + phrase_length])
+            
+            # Check if this phrase appears again later in the name
+            remaining_parts = name_parts[start_pos + phrase_length:]
+            if len(remaining_parts) >= phrase_length:
+                for check_pos in range(len(remaining_parts) - phrase_length + 1):
+                    check_phrase = ' '.join(remaining_parts[check_pos:check_pos + phrase_length])
+                    if phrase == check_phrase:
+                        return True, f"Phrase repeated: '{phrase.title()}'"
+    
+    # Check for repeated individual words (excluding common ones)
+    if repeated_words:
+        return True, f"Words repeated: {', '.join([w.title() for w in repeated_words])}"
+    
+    return False, ""
+
+def find_accounts_with_repeated_names(grouped_data, system_name):
+    """Find accounts that have beneficiaries with repeated names"""
+    repeated_name_accounts = []
+    
+    for acct, bene_set in grouped_data.items():
+        account_issues = []
+        
+        for designation, name, allocation, last_updated in bene_set:
+            has_repetition, repetition_detail = check_repeated_names_in_beneficiary(name)
+            if has_repetition:
+                account_issues.append({
+                    'designation': designation,
+                    'name': name.title(),
+                    'allocation': allocation,
+                    'last_updated': last_updated,
+                    'repetition_detail': repetition_detail,
+                    'system': system_name
+                })
+        
+        if account_issues:
+            repeated_name_accounts.append({
+                'account_number': acct,
+                'issues': account_issues
+            })
+    
+    return repeated_name_accounts
 
 def check_specific_name_order_mismatches(bd_data, ac_data):
     """Check if names are swapped first/last name between BD and AC"""
@@ -372,90 +323,7 @@ def compare_beneficiaries_comprehensive(bd_benes, ac_benes):
     
     return False, match_details, has_name_order_issue, allocation_issues, total_allocation_issues, name_order_issues, bd_last_updated, ac_last_updated
 
-def check_repeated_names_in_beneficiary(name):
-    """Check if a beneficiary name has repeated words/phrases"""
-    name_clean = name.strip().lower()
-    words = name_clean.split()
-    
-    # Check for exact word repetitions
-    word_counts = {}
-    for word in words:
-        word_counts[word] = word_counts.get(word, 0) + 1
-    
-    # Find repeated words (excluding common words that might legitimately repeat)
-    common_words = {'the', 'and', 'or', 'of', 'trust', 'family', 'jr', 'sr', 'ii', 'iii', 'iv'}
-    repeated_words = []
-    for word, count in word_counts.items():
-        if count > 1 and word not in common_words and len(word) > 2:
-            repeated_words.append(word)
-    
-    # Check for phrase repetitions (like "Aslan Family Trust Aslan Family Trust")
-    name_parts = name_clean.split()
-    
-    # Check if first half equals second half (for even number of words)
-    if len(name_parts) >= 4 and len(name_parts) % 2 == 0:
-        mid_point = len(name_parts) // 2
-        first_half = ' '.join(name_parts[:mid_point])
-        second_half = ' '.join(name_parts[mid_point:])
-        if first_half == second_half:
-            return True, f"Full phrase repeated: '{first_half.title()}'"
-    
-    # Check for partial phrase repetitions at different positions
-    for phrase_length in range(2, len(name_parts) // 2 + 1):
-        for start_pos in range(len(name_parts) - phrase_length + 1):
-            phrase = ' '.join(name_parts[start_pos:start_pos + phrase_length])
-            
-            # Check if this phrase appears again later in the name
-            remaining_parts = name_parts[start_pos + phrase_length:]
-            if len(remaining_parts) >= phrase_length:
-                for check_pos in range(len(remaining_parts) - phrase_length + 1):
-                    check_phrase = ' '.join(remaining_parts[check_pos:check_pos + phrase_length])
-                    if phrase == check_phrase:
-                        return True, f"Phrase repeated: '{phrase.title()}'"
-    
-    # Check for repeated individual words (excluding common ones)
-    if repeated_words:
-        return True, f"Words repeated: {', '.join([w.title() for w in repeated_words])}"
-    
-    return False, ""
-
-def find_accounts_with_repeated_names(grouped_data, system_name):
-    """Find accounts that have beneficiaries with repeated names"""
-    repeated_name_accounts = []
-    
-    for acct, bene_set in grouped_data.items():
-        account_issues = []
-        
-        for designation, name, allocation, last_updated in bene_set:
-            has_repetition, repetition_detail = check_repeated_names_in_beneficiary(name)
-            if has_repetition:
-                account_issues.append({
-                    'designation': designation,
-                    'name': name.title(),
-                    'allocation': allocation,
-                    'last_updated': last_updated,
-                    'repetition_detail': repetition_detail,
-                    'system': system_name
-                })
-        
-        if account_issues:
-            repeated_name_accounts.append({
-                'account_number': acct,
-                'issues': account_issues
-            })
-    
-    return repeated_name_accounts
-
 def format_beneficiaries_display_with_allocation(bene_set):
-    """Format beneficiaries for display with allocation"""
-    if not bene_set:
-        return "None"
-    
-    formatted = []
-    for designation, name, allocation, last_updated in sorted(bene_set):
-        formatted.append(f"{designation.title()}: {name.title()} ({allocation}%)")
-    
-    return " | ".join(formatted)
     """Format beneficiaries for display with allocation"""
     if not bene_set:
         return "None"
@@ -488,39 +356,6 @@ if bd_file and ac_file:
     # Group beneficiaries with allocation and date information
     grouped_bd = group_beneficiaries_with_allocation_and_dates(bd_active_df)
     grouped_ac = group_beneficiaries_with_allocation_and_dates(ac_active_df)
-    
-    # --- 3AA Accounts Logic ---
-    three_aa_accounts = {
-        acct for acct in set(grouped_bd.keys()).union(set(grouped_ac.keys()))
-        if acct.startswith("3AA")
-    }
-    
-    three_aa_entries = []
-    for acct in three_aa_accounts:
-        bd_benes = grouped_bd.get(acct, set())
-        ac_benes = grouped_ac.get(acct, set())
-        
-        # Comprehensive comparison
-        is_match, match_details, is_name_order_issue, allocation_issues, total_allocation_issues, name_order_pairs, bd_last_updated, ac_last_updated = compare_beneficiaries_comprehensive(bd_benes, ac_benes)
-        
-        # Create issue flags for filtering
-        has_allocation_issues = len(allocation_issues) > 0
-        has_total_allocation_issues = len(total_allocation_issues) > 0
-        has_any_allocation_issues = has_allocation_issues or has_total_allocation_issues
-        
-        three_aa_entries.append({
-            "account_number": acct,
-            "bd_beneficiaries": format_beneficiaries_display_with_allocation(bd_benes),
-            "ac_beneficiaries": format_beneficiaries_display_with_allocation(ac_benes),
-            "match_status": "✅ Match" if is_match else "❌ Mismatch",
-            "match_details": match_details,
-            "bd_last_updated": bd_last_updated,
-            "ac_last_updated": ac_last_updated,
-            "is_name_order_issue": is_name_order_issue,
-            "has_allocation_issues": has_any_allocation_issues,
-            "individual_allocation_issues": has_allocation_issues,
-            "total_allocation_issues": has_total_allocation_issues
-        })
     
     # --- Find Repeated Name Issues ---
     bd_repeated_names = find_accounts_with_repeated_names(grouped_bd, "BD")
@@ -556,6 +391,39 @@ if bd_file and ac_file:
             })
     
     repeated_names_df = pd.DataFrame(all_repeated_names)
+    
+    # --- 3AA Accounts Logic ---
+    three_aa_accounts = {
+        acct for acct in set(grouped_bd.keys()).union(set(grouped_ac.keys()))
+        if acct.startswith("3AA")
+    }
+    
+    three_aa_entries = []
+    for acct in three_aa_accounts:
+        bd_benes = grouped_bd.get(acct, set())
+        ac_benes = grouped_ac.get(acct, set())
+        
+        # Comprehensive comparison
+        is_match, match_details, is_name_order_issue, allocation_issues, total_allocation_issues, name_order_pairs, bd_last_updated, ac_last_updated = compare_beneficiaries_comprehensive(bd_benes, ac_benes)
+        
+        # Create issue flags for filtering
+        has_allocation_issues = len(allocation_issues) > 0
+        has_total_allocation_issues = len(total_allocation_issues) > 0
+        has_any_allocation_issues = has_allocation_issues or has_total_allocation_issues
+        
+        three_aa_entries.append({
+            "account_number": acct,
+            "bd_beneficiaries": format_beneficiaries_display_with_allocation(bd_benes),
+            "ac_beneficiaries": format_beneficiaries_display_with_allocation(ac_benes),
+            "match_status": "✅ Match" if is_match else "❌ Mismatch",
+            "match_details": match_details,
+            "bd_last_updated": bd_last_updated,
+            "ac_last_updated": ac_last_updated,
+            "is_name_order_issue": is_name_order_issue,
+            "has_allocation_issues": has_any_allocation_issues,
+            "individual_allocation_issues": has_allocation_issues,
+            "total_allocation_issues": has_total_allocation_issues
+        })
     
     three_aa_df = pd.DataFrame(three_aa_entries)
     
@@ -663,6 +531,97 @@ if bd_file and ac_file:
                     file_name="3aa_accounts_real_mismatches.csv",
                     mime="text/csv"
                 )
+        
+        # Special download for user-specified accounts with repeated names
+        st.subheader("📥 Special Downloads")
+        
+        # List of accounts with repeated name issues (from user)
+        repeated_name_account_list = [
+            "3AA24505", "3AA39997", "3AA20200", "3AA08615", "3AA28991", "3AA23625", "3AA23109", "3AA29177", 
+            "3AA37439", "3AA36909", "3AA18746", "3AA23696", "3AA27375", "3AA39620", "3AA24922", "3AA20755", 
+            "3AA19654", "3AA25770", "3AA42413", "3AA29263", "3AA45269", "3AA32585", "3AA34732", "3AA22260", 
+            "3AA35441", "3AA16862", "3AA10133", "3AA23475", "3AA35486", "3AA16779", "3AA34677", "3AA39403", 
+            "3AA34186", "3AA38133", "3AA21580", "3AA21579", "3AA06744", "3AA12135", "3AA40074", "3AA46425", 
+            "3AA21474", "3AA41190", "3AA24435", "3AA18715", "3AA28239", "3AA21951", "3AA30022", "3AA45578", 
+            "3AA13625", "3AA24890", "3AA34881", "3AA18294", "3AA42327", "3AA22994", "3AA12361", "3AA19996", 
+            "3AA20199", "3AA26326", "3AA31957", "3AA19149", "3AA21938", "3AA39128", "3AA44009", "3AA20450", 
+            "3AA14943", "3AA38592", "3AA22232", "3AA21840", "3AA16004", "3AA22811", "3AA25792", "3AA29919", 
+            "3AA11599", "3AA28989", "3AA18892", "3AA27670", "3AA12049", "3AA20340", "3AA39778", "3AA41110", 
+            "3AA21314", "3AA18865", "3AA16155", "3AA27495", "3AA10095", "3AA19615", "3AA26362", "3AA40527", 
+            "3AA20091", "3AA09239", "3AA30187", "3AA22152", "3AA11598", "3AA30178", "3AA40108", "3AA27669", 
+            "3AA08404", "3AA45265", "3AA26457", "3AA23680", "3AA20920", "3AA24434", "3AA45249", "3AA22231", 
+            "3AA27039", "3AA24339", "3AA45952", "3AA28442", "3AA41643", "3AA44224", "3AA16473", "3AA12657", 
+            "3AA22807", "3AA24370", "3AA44700", "3AA41948", "3AA18516", "3AA08522", "3AA18862", "3AA12652", 
+            "3AA31960", "3AA23054", "3AA25352", "3AA08521", "3AA24341", "3AA23002", "3AA39343", "3AA13897", 
+            "3AA36334", "3AA14947", "3AA18528", "3AA36007", "3AA37442", "3AA30422", "3AA28227", "3AA39404", 
+            "3AA37484", "3AA23011", "3AA34341", "3AA17154", "3AA19447", "3AA16807", "3AA37314", "3AA26325", 
+            "3AA18767", "3AA21220", "3AA11531", "3AA26838", "3AA42328", "3AA28851", "3AA41186", "3AA44008", 
+            "3AA32097", "3AA44922", "3AA12399", "3AA09340", "3AA39380", "3AA09807", "3AA41029", "3AA17122", 
+            "3AA20383", "3AA29090", "3AA29370", "3AA37451", "3AA22974", "3AA28979", "3AA25430", "3AA18893", 
+            "3AA45165", "3AA33987", "3AA12656", "3AA18747", "3AA21360", "3AA37937", "3AA42330", "3AA20857", 
+            "3AA24049", "3AA23144", "3AA23282", "3AA12770", "3AA41744", "3AA22975", "3AA12895", "3AA22154", 
+            "3AA42309", "3AA10225", "3AA11985", "3AA43897", "3AA46334", "3AA24132", "3AA39437", "3AA28440", 
+            "3AA18500", "3AA34066", "3AA40979", "3AA26633", "3AA27078", "3AA05986", "3AA31056", "3AA24377", 
+            "3AA28416", "3AA18863", "3AA42436", "3AA27772", "3AA19226", "3AA22949", "3AA26647", "3AA41109", 
+            "3AA28237", "3AA36958", "3AA36737", "3AA17511", "3AA16154", "3AA16381", "3AA20792", "3AA43578", 
+            "3AA43120", "3AA40195", "3AA34014", "3AA43888", "3AA21182", "3AA20385", "3AA44391", "3AA41832", 
+            "3AA35548", "3AA29374", "3AA07377", "3AA44949", "3AA27079", "3AA21581", "3AA28228", "3AA44250", 
+            "3AA20090", "3AA19499", "3AA27372", "3AA30049", "3AA37485", "3AA42323", "3AA29536", "3AA25460", 
+            "3AA41439", "3AA36333", "3AA22034", "3AA16005", "3AA14109", "3AA26074", "3AA23993", "3AA17070", 
+            "3AA41772", "3AA42348", "3AA44711", "3AA38846", "3AA15060", "3AA09154", "3AA38887", "3AA08896", 
+            "3AA38538", "3AA22261", "3AA22651", "3AA08956", "3AA25767", "3AA34018", "3AA45264", "3AA16500", 
+            "3AA19446", "3AA20195", "3AA25588", "3AA46112", "3AA37318", "3AA37677", "3AA12359", "3AA18693", 
+            "3AA17162", "3AA42442", "3AA42943", "3AA22683", "3AA26158", "3AA24506", "3AA38616", "3AA22993", 
+            "3AA13527", "3AA29178", "3AA24288", "3AA08523", "3AA43119", "3AA17291", "3AA18328", "3AA24966", 
+            "3AA42676", "3AA41713", "3AA21464", "3AA28980", "3AA19222", "3AA06536", "3AA08671", "3AA13022", 
+            "3AA28744", "3AA38593", "3AA36004", "3AA28441", "3AA40783", "3AA14030", "3AA30544", "3AA31237", 
+            "3AA08955", "3AA31952", "3AA12659", "3AA19846", "3AA38954", "3AA18784", "3AA16856", "3AA24200", 
+            "3AA32504", "3AA16881", "3AA23070", "3AA29928", "3AA27599", "3AA28525", "3AA24001", "3AA40981", 
+            "3AA41712", "3AA43084", "3AA18766", "3AA16846", "3AA35534", "3AA34880", "3AA38542", "3AA39689", 
+            "3AA24551", "3AA23705", "3AA19398", "3AA14524", "3AA24820", "3AA08426", "3AA31139", "3AA34136", 
+            "3AA40819", "3AA19936", "3AA26467", "3AA37324", "3AA39201", "3AA24149", "3AA41842", "3AA44150", 
+            "3AA44249", "3AA26193", "3AA26324", "3AA36331", "3AA44921", "3AA16704", "3AA24818", "3AA29921", 
+            "3AA36910", "3AA41193", "3AA39379", "3AA14876", "3AA46335", "3AA22027", "3AA22872", "3AA31234", 
+            "3AA26075", "3AA23056", "3AA09915", "3AA20559", "3AA40106", "3AA23474", "3AA38886", "3AA20384", 
+            "3AA27600", "3AA07286", "3AA22871", "3AA08233", "3AA44035", "3AA28526", "3AA40782", "3AA13642", 
+            "3AA40816", "3AA23283", "3AA11722", "3AA21934", "3AA41986", "3AA31783", "3AA23706", "3AA12653", 
+            "3AA09125", "3AA06761", "3AA19228", "3AA33404", "3AA41395", "3AA05541", "3AA34137", "3AA34281", 
+            "3AA17220", "3AA07380", "3AA41198", "3AA44026", "3AA41194", "3AA21463", "3AA22682", "3AA18716", 
+            "3AA38425", "3AA12195", "3AA39473", "3AA20856", "3AA08670", "3AA43581", "3AA12402", "3AA14946", 
+            "3AA16636", "3AA30046", "3AA19229", "3AA24857", "3AA14944", "3AA18753", "3AA27463", "3AA37482", 
+            "3AA19847", "3AA37478", "3AA28330", "3AA43184", "3AA46241", "3AA31951", "3AA42232", "3AA12395", 
+            "3AA20791", "3AA43577", "3AA26825", "3AA29371", "3AA34487", "3AA39375", "3AA22219", "3AA39497", 
+            "3AA16780", "3AA12483", "3AA39829", "3AA41516", "3AA38783", "3AA21155", "3AA42331", "3AA19227", 
+            "3AA24655", "3AA43121", "3AA42072", "3AA19617", "3AA18748", "3AA29927", "3AA13198", "3AA46332", 
+            "3AA18529", "3AA25772", "3AA12033", "3AA18669", "3AA23112", "3AA23055", "3AA28529", "3AA41665", 
+            "3AA44511", "3AA27063", "3AA08673", "3AA32501", "3AA36005", "3AA42269", "3AA18688", "3AA23093", 
+            "3AA16001", "3AA23992", "3AA07379", "3AA43942", "3AA41841", "3AA09147", "3AA09638", "3AA12583", 
+            "3AA25431", "3AA36394", "3AA41108", "3AA36332", "3AA09891", "3AA41460", "3AA43579", "3AA45967", 
+            "3AA38682", "3AA20341", "3AA13660", "3AA23703", "3AA20921", "3AA21028", "3AA20194", "3AA18515", 
+            "3AA06981", "3AA14011", "3AA45951", "3AA16253", "3AA21475", "3AA07869", "3AA16726", "3AA17878", 
+            "3AA09122", "3AA06052", "3AA07378", "3AA19453", "3AA23737", "3AA38551", "3AA45267", "3AA14577", 
+            "3AA17073", "3AA25860", "3AA12116", "3AA18694", "3AA22650", "3AA23830", "3AA29372", "3AA39127", 
+            "3AA13898", "3AA42324", "3AA22789", "3AA10123", "3AA46528", "3AA39202", "3AA11733", "3AA12893", 
+            "3AA20453", "3AA12655"
+        ]
+        
+        # Filter the main dataframe for these specific accounts
+        specified_accounts_df = three_aa_df[three_aa_df["account_number"].isin(repeated_name_account_list)]
+        
+        if len(specified_accounts_df) > 0:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📋 Download Specified Repeated Name Accounts",
+                    data=specified_accounts_df.to_csv(index=False),
+                    file_name="specified_repeated_name_accounts.csv",
+                    mime="text/csv",
+                    help=f"Download {len(specified_accounts_df)} accounts from your specified list"
+                )
+            with col2:
+                st.metric("Specified Accounts Found", f"{len(specified_accounts_df)} / {len(repeated_name_account_list)}")
+        else:
+            st.info("None of the specified accounts with repeated names were found in the current dataset.")
     
     with tab2:
         st.subheader("🔍 Repeated Name Issues")
@@ -740,12 +699,20 @@ else:
     2. **Total Allocation Validation**: Ensures primary and contingent totals match between systems
     3. **Detailed Issue Reporting**: Shows exact allocation differences (e.g., "John Smith (Primary): BD 50% → AC 60%")
     
-    ### Features:
-    - **Allocation percentage parsing**: Handles "50%", "50.5%", or numeric formats
-    - **Floating point tolerance**: Ignores differences < 0.01% to handle rounding
-    - **Comprehensive filtering**: View specific types of issues for targeted fixes
-    - **Enhanced display**: Shows beneficiaries with their allocation percentages
-    - **Multiple download options**: Separate files for different issue types
+    ### Key Features:
+    - **Precise name order detection**: Only flags cases where first and last names are exactly swapped between systems
+    - **Both names must exist**: Name order issues only identified when both versions exist in BD and AC
+    - **Two-part names only**: Only checks names with exactly two parts (first name + last name)
+    - **Clear issue display**: Shows exactly which names are swapped (e.g., "BD: John Smith → AC: Smith John")
+    - **Targeted fixes**: Download specific name order issues for data correction
+    - **Date tracking**: Shows BD and AC last updated dates for each account
+    - **Repeated name detection**: Identifies beneficiaries with duplicated names/phrases (e.g., "Skach Family Trust Skach Family Trust")
     
-    This ensures both beneficiary information AND allocation percentages are synchronized between systems.
+    ### Repeated Name Detection:
+    - **Word repetitions**: Finds names with repeated words (excluding common terms like "Trust", "Family")
+    - **Phrase repetitions**: Detects full phrase duplications within names
+    - **System-specific tracking**: Shows which system (BD/AC) has the repeated name issues
+    - **Detailed analysis**: Provides breakdown of repetition patterns for data quality fixes
+    
+    This helps you identify accounts where the same person is listed but with first/last names reversed between systems, AND finds data quality issues with duplicated name components.
     """)
