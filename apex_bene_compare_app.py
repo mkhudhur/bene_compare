@@ -315,6 +315,17 @@ def find_accounts_with_repeated_names(grouped_data, system_name):
             })
     
     return repeated_name_accounts
+
+def format_beneficiaries_display_with_allocation(bene_set):
+    """Format beneficiaries for display with allocation"""
+    if not bene_set:
+        return "None"
+    
+    formatted = []
+    for designation, name, allocation, last_updated in sorted(bene_set):
+        formatted.append(f"{designation.title()}: {name.title()} ({allocation}%)")
+    
+    return " | ".join(formatted)
     """Format beneficiaries for display with allocation"""
     if not bene_set:
         return "None"
